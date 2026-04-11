@@ -6,4 +6,4 @@ export const PLATFORM_NAME = 'BigAssFans-i6';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = 'homebridge2-bigassfans';
+export const PLUGIN_NAME = 'homebridge-bigassfans-2';

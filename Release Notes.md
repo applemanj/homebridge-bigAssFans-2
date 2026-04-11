@@ -1,6 +1,6 @@
 ## Release Notes
 
-### v1.0.0-beta.1 (homebridge2-bigassfans fork)
+### v1.0.0-beta.1 (homebridge-bigassfans-2 fork)
 
 **Breaking Changes**
 - Requires **Homebridge 2.0** (2.0.0-beta.0 or later). Homebridge 1.x is no longer supported.

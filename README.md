@@ -4,11 +4,11 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge2-bigassfans (v1.0.0-beta.1)
+## homebridge-bigassfans-2 (v1.0.0-beta.1)
 
 </span>
 
-`homebridge2-bigassfans` is a Homebridge 2.0 plugin for controlling Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series ceiling fans with firmware version 3.0 or greater.
+`homebridge-bigassfans-2` is a Homebridge 2.0 plugin for controlling Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series ceiling fans with firmware version 3.0 or greater.
 
 This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge-i6-bigAssFans) by [@oogje](https://github.com/oogje), updated and modernized for Homebridge 2.0.
 
@@ -69,7 +69,7 @@ If you are not already running Homebridge, see the [Homebridge documentation](ht
 #### Install from npm
 
 ```sh
-sudo npm install -g homebridge2-bigassfans
+sudo npm install -g homebridge-bigassfans-2
 ```
 
 #### Install from this repo
