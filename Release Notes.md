@@ -1,14 +1,14 @@
 ## Release Notes
 
-### v1.0.0-beta.1 (homebridge-bigassfans-2 fork)
+### v1.0.0 (homebridge-bigassfans-2 fork)
 
 **Breaking Changes**
-- Requires **Homebridge 2.0** (2.0.0-beta.0 or later). Homebridge 1.x is no longer supported.
+- Requires **Homebridge 1.8.0** or newer (including Homebridge 2.0).
 - Requires **Node.js 20** or newer. Node 18 is no longer supported.
 - Fan service upgraded from `Fan` to `Fanv2`. Clear your accessory cache after upgrading.
 - `showWhooshSwitch` config option removed -- Whoosh is now native `SwingMode` in the fan tile.
 
-**Homebridge 2.0 / Fanv2 Upgrade**
+**Fanv2 Upgrade**
 - `Active` characteristic replaces `On` (0=Inactive, 1=Active).
 - `TargetFanState` provides native Auto mode (0=Manual, 1=Auto) in the fan tile.
 - `CurrentFanState` reports Inactive, Idle, or Blowing Air.
