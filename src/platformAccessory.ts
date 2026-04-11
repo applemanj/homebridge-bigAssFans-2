@@ -11,6 +11,7 @@ const ONEBYTEHEADER = [0x12, 0x07, 0x12, 0x05, 0x1a, 0x03];
 const TARGETLIGHT_BOTH = 0;
 const TARGETLIGHT_DOWN = 1;
 const TARGETLIGHT_UP = 2;
+let connectSocket: typeof net.connect = net.connect;
 
 interface lightStates {
   On: boolean;
@@ -1310,7 +1311,7 @@ function networkSetup(pA: BAF) {
     pA.client = undefined;
 
     setTimeout(() => {
-      pA.client = net.connect(connectOptions, () => {
+      pA.client = connectSocket(connectOptions, () => {
         retryCount = 0;
         if (errCode !== 'ECONNRESET') {
           pA.platform.log.info(pA.Name + ' reconnected!');
@@ -1373,7 +1374,7 @@ function networkSetup(pA: BAF) {
   }
 
   // initial connection with retry support (issue #35)
-  pA.client = net.connect(connectOptions, () => {
+  pA.client = connectSocket(connectOptions, () => {
     debugLog(pA, ['network', 'progress'], [1, 2], 'connected!');
     sendInitSequence();
   });
@@ -3304,3 +3305,19 @@ function HSVtoRGB(hue: number, saturation: number, brightness: number) {
   // this better be unreachable
   return [0, 0, 0];
 }
+
+export const __test__ = {
+  ProtobufParseError,
+  buildStandbyLEDColorMessage,
+  getVarint,
+  networkSetup,
+  onData,
+  unstuff,
+  varint_encode,
+  setConnectSocketForTest(connect: typeof net.connect) {
+    connectSocket = connect;
+  },
+  resetConnectSocketForTest() {
+    connectSocket = net.connect;
+  },
+};
