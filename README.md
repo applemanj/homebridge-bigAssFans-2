@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.0.2
+## homebridge-bigassfans-2 v1.0.3
 
 </span>
 
@@ -36,7 +36,7 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
 
-**v1.0.2**
+**v1.0.3**
 - Hardened protobuf parsing so malformed or truncated frames are safely dropped instead of risking a stuck parse loop.
 - The optional debug TCP port now listens on `127.0.0.1` only.
 - Fans removed from `config.fans` are automatically cleaned out of the Homebridge accessory cache.

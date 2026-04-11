@@ -1,6 +1,6 @@
 ## Release Notes
 
-### v1.0.2
+### v1.0.3
 
 **Security / Reliability**
 - Hardened protobuf parsing so malformed or truncated frames are dropped with a warning instead of risking a stuck parse loop.
