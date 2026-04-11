@@ -1413,9 +1413,9 @@ function networkSetup(pA: BAF) {
       });
     });
 
-    srv.listen(0, () => {
+    srv.listen(0, '127.0.0.1', () => {
       const info = srv.address() as net.AddressInfo;
-      pA.platform.log.info(`${pA.Name} - plugin listening for debugging commands on port: ${info.port}`);
+      pA.platform.log.info(`${pA.Name} - plugin listening for debugging commands on localhost:${info.port}`);
     });
   }
 }
@@ -1513,9 +1513,20 @@ function onData(pA: BAF, data: Buffer) {
       chunks[i] = chunks[i].subarray(1, chunks[i].length-1);
     }
 
-    debugLog(pA, 'network', 11, 'raw (unstuffed) chunks[' + i + ']: ' + hexFormat(unstuff(chunks[i])));
+    const unstuffedChunk = unstuff(chunks[i]);
+    debugLog(pA, 'network', 11, 'raw (unstuffed) chunks[' + i + ']: ' + hexFormat(unstuffedChunk));
 
-    const funStack: funCall[] = buildFunStack(unstuff(chunks[i]), pA);
+    let funStack: funCall[];
+    try {
+      funStack = buildFunStack(unstuffedChunk, pA);
+    } catch (error) {
+      if (isProtobufParseError(error)) {
+        pA.platform.log.warn(`${pA.Name} - dropped malformed protobuf frame: ${error.message}`);
+        continue;
+      }
+
+      throw error;
+    }
     if (pA.targetBulb === -1) {
       funStack.forEach((value) => {
         debugLog(pA, 'funstack', 1, `targetBulb === -1  ${value[0].name}(${value[1]})`);
@@ -2172,16 +2183,26 @@ function clientWrite(client, b, pA:BAF) {
 
 /** Decodes a protobuf varint from the start of the buffer. Returns [remaining buffer, decoded value]. */
 function getVarint(b: Buffer): [Buffer, number] {
+  if (b.length === 0) {
+    throw new ProtobufParseError('Unexpected end of buffer while decoding varint');
+  }
+
   let r = 0;
   const a: number[] = [];
+  let terminated = false;
 
   for (let index = 0; index < b.length; index++) {
     if (b[index] & 0x80) {
       a.push(b[index] & 0x7f);
     } else {
       a.push(b[index] & 0x7f);
+      terminated = true;
       break;
     }
+  }
+
+  if (!terminated) {
+    throw new ProtobufParseError('Truncated varint');
   }
 
   for (let index = a.length - 1; index >= 0; index--) {
@@ -2193,24 +2214,9 @@ function getVarint(b: Buffer): [Buffer, number] {
 
 /** Extracts the wire type and field number from a protobuf key varint. Returns [remaining buffer, type, field]. */
 function getProtoElements(b: Buffer): [Buffer, number, number] {
-  // key is a varint
-  let key = 0;
-  const a: number[] = [];
-
-  for (let index = 0; index < b.length; index++) {
-    if (b[index] & 0x80) {
-      a.push(b[index] & 0x7f);
-    } else {
-      a.push(b[index] & 0x7f);
-      break;
-    }
-  }
-
-  for (let index = a.length - 1; index >= 0; index--) {
-    key = (key << 7) | a[index];
-  }
-
-  return [b.subarray(a.length), key & 0x07,  key >>> 3];
+  let key: number;
+  [b, key] = getVarint(b);
+  return [b, key & 0x07,  key >>> 3];
 }
 
 // protobuf types
@@ -2222,6 +2228,25 @@ function getProtoElements(b: Buffer): [Buffer, number, number] {
 // 5	I32	fixed32, sfixed32, float
 
 type funCall = [((s: string, pA: BigAssFans_i6PlatformAccessory) => void), string];
+class ProtobufParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProtobufParseError';
+  }
+}
+
+function isProtobufParseError(error: unknown): error is ProtobufParseError {
+  return error instanceof ProtobufParseError;
+}
+
+function getDelimitedMessageEnd(b: Buffer, length: number, context: string): number {
+  if (length > b.length) {
+    throw new ProtobufParseError(`${context} declared length ${length} exceeds remaining buffer ${b.length}`);
+  }
+
+  return b.length - length;
+}
+
 const rebootReasons = [
   'zero entry',
   'Unknown',
@@ -2257,13 +2282,14 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
   debugLog(pA, 'protoparse', 1, 'field: ' + field);
   if (field === 2) { // top level
     [b, length] = getVarint(b);
+    getDelimitedMessageEnd(b, length, 'top level message');
     [b, type, field] = getProtoElements(b);
     debugLog(pA, 'protoparse', 1, '  field: ' + field);
 
     while (b.length > 0) {
       if (field === 4)  { // level 2
         [b, length] = getVarint(b);
-        const remainingLength = (b.length) - length;
+        const remainingLength = getDelimitedMessageEnd(b, length, `field ${field}`);
 
         while (b.length > remainingLength) {
           [b, type, field] = getProtoElements(b);
@@ -2491,7 +2517,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 16: {  // detailed version
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 16 message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2518,7 +2544,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 17: { // capabilities (including light pressence)
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 17 capabilities message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2615,7 +2641,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 83: {  // standby LED - message: 1/color preset, 2/enabled, 3/percent, 4/red, 5/green, 6/blue
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 83 standby LED message');
                 // it seems we must assume the absence of enabled=1 means enabled=0 since turning off the night light (standbyLED)
                 // does not send a subfield 2 with a value of 0, but doesn't send subfield 2 at all.
                 let enabled = 0;
@@ -2677,7 +2703,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 124: { // WiFi messages
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 124 WiFi message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2702,7 +2728,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 152: { // external device version
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 152 external device version message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2732,7 +2758,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 156: { // manufacturer debug info
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 156 manufacturer debug message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2787,7 +2813,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 171: { // group container
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 171 group container message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2812,7 +2838,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 176: {  // issue #17/Kohle81/Ventilator (Haiku L Series [3.1.1])
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 176 message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2829,7 +2855,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
                     case 3: {
                       [b, length] = getVarint(b);
-                      const remainingLength = (b.length) - length;
+                      const remainingLength = getDelimitedMessageEnd(b, length, 'field 176/3 message');
                       while (b.length > remainingLength) {
                         [b, type, field] = getProtoElements(b);
                         debugLog(pA, 'protoparse', 1, `          field: ${field}`);
@@ -2859,7 +2885,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 177: {  // issue #17/Kohle81/Ventilator (Haiku L Series [3.1.1])
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 177 message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2889,7 +2915,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 178: {  // issue #17/Kohle81/Ventilator (Haiku L Series [3.1.1])
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 178 message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2920,7 +2946,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
 
               case 179: {  // issue #17/Kohle81/Ventilator (Haiku L Series [3.1.1])
                 [b, length] = getVarint(b);
-                const remainingLength = (b.length) - length;
+                const remainingLength = getDelimitedMessageEnd(b, length, 'field 179 message');
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, `        field: ${field}`);
@@ -2956,7 +2982,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
             }
           } else if (field === 3) {  // schedule job
             [b, length] = getVarint(b);
-            const residualLength = (b.length) - length;
+            const residualLength = getDelimitedMessageEnd(b, length, 'schedule job message');
             while (b.length > residualLength) {
               [b, type, field] = getProtoElements(b);
               debugLog(pA, 'protoparse', 1, '      field: ' + field);
@@ -2969,7 +2995,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                   break;
                 case 2: { // schedule - see schema, there's more than what's noted here
                   [b, length] = getVarint(b);
-                  const residualLength = (b.length) - length;
+                  const residualLength = getDelimitedMessageEnd(b, length, 'schedule detail message');
                   while (b.length > residualLength) {
                     [b, type, field] = getProtoElements(b);
                     debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2993,7 +3019,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                       }
                       case 4: { // days
                         [b, length] = getVarint(b);
-                        const residualLength = (b.length) - length;
+                        const residualLength = getDelimitedMessageEnd(b, length, 'schedule days message');
                         while (b.length > residualLength) {
                           [b, v] = getValue(b); // ignore
                           debugLog(pA, 'protoparse', 1, '            value: ' + v);
@@ -3009,7 +3035,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                       case 8: { // end event
                         const field7or8 = field;
                         [b, length] = getVarint(b);
-                        const residualLength = (b.length) - length;
+                        const residualLength = getDelimitedMessageEnd(b, length, `schedule event ${field7or8} message`);
                         while (b.length > residualLength) {
                           [b, type, field] = getProtoElements(b);
                           debugLog(pA, 'protoparse', 1, '          field: ' + field);
@@ -3020,7 +3046,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                               break;
                             case 2: { // properties
                               [b, length] = getVarint(b);
-                              const residualLength = (b.length) - length;
+                              const residualLength = getDelimitedMessageEnd(b, length, 'schedule properties message');
                               while (b.length > residualLength) {
                                 [b, type, field] = getProtoElements(b);
                                 debugLog(pA, 'protoparse', 1, '            field: ' + field);
@@ -3194,6 +3220,7 @@ function doUnknownField(b: Buffer, type: number, pA: BAF) {
   } else if (type === 2) {
     let length: number;
     [b, length] = getVarint(b);
+    getDelimitedMessageEnd(b, length, 'unknown length-delimited field');
     debugLog(pA, 'cluing', 1, ' length: ' + length);
     b = b.subarray(length);
   } else if (type === 3 || type === 4) {
@@ -3208,12 +3235,14 @@ function doUnknownField(b: Buffer, type: number, pA: BAF) {
 function getBytes(b: Buffer) : [Buffer, Buffer] {
   let length: number;
   [b, length] = getVarint(b);
+  getDelimitedMessageEnd(b, length, 'bytes field');
   return [b.subarray(length), b.subarray(0, length)];
 }
 
 function getString(b: Buffer) : [Buffer, string] {
   let length: number;
   [b, length] = getVarint(b);
+  getDelimitedMessageEnd(b, length, 'string field');
   return [b.subarray(length), b.subarray(0, length).toString()];
 }
 

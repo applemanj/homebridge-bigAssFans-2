@@ -1,5 +1,18 @@
 ## Release Notes
 
+### v1.0.2
+
+**Security / Reliability**
+- Hardened protobuf parsing so malformed or truncated frames are dropped with a warning instead of risking a stuck parse loop.
+- Bound the optional debug TCP port to `127.0.0.1` only, preserving local debugging while removing LAN exposure.
+
+**Behavior**
+- Removed fans that are no longer present in `config.fans` are now automatically unregistered from the Homebridge accessory cache.
+
+**UI / Docs**
+- Expanded `config.schema.json` so the Homebridge UI now exposes the additional documented options from the README.
+- Updated README configuration docs to match the current UI and debug-port behavior.
+
 ### v1.0.0 (homebridge-bigassfans-2 fork)
 
 **Breaking Changes**

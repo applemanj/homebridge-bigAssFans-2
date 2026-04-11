@@ -8,65 +8,131 @@
     "type": "object",
     "properties": {
       "fans": {
-        "title": "Fans:",
+        "title": "Fans",
         "type": "array",
         "items": {
           "type": "object",
           "properties": {
             "name": {
-                "title": "Name",
-                "description": "The name of the fan.",
-                "type": "string",
-                "minLength": 1,
-                "required": true,
-                "default": "i6 fan"
+              "title": "Name",
+              "description": "Display name for the fan.",
+              "type": "string",
+              "minLength": 1,
+              "required": true,
+              "default": "i6 fan"
             },
             "ip": {
-              "title": "Fan IP address or hostname",
-              "description": "The IP address or hostname of the fan (supports mDNS hostnames).",
+              "title": "Fan IP Address Or Hostname",
+              "description": "The IP address or hostname of the fan (supports mDNS .local hostnames).",
               "type": "string",
               "format": "hostname",
               "required": true
             },
             "mac": {
-              "title": "MAC address",
+              "title": "MAC Address",
               "description": "The MAC address of the fan.",
               "type": "string",
               "required": true
             },
             "showFanAutoSwitch": {
-              "title": "Fan Auto Switch (legacy)",
-              "description": "Add a separate switch for 'Fan Auto' (also available natively in fan tile).",
+              "title": "Fan Auto Switch (Legacy)",
+              "description": "Add a separate switch for Fan Auto in addition to the native fan-tile control.",
               "type": "boolean",
               "default": false
             },
             "showLightAutoSwitch": {
               "title": "Light Auto Switch",
-              "description": "Add a switch for 'Light Auto'",
+              "description": "Add a switch for Light Auto mode.",
               "type": "boolean",
               "default": false
             },
             "showDimToWarmSwitch": {
-              "title": "Dim to Warm Switch",
-              "description": "Add a switch for 'Dim to Warm'",
+              "title": "Dim To Warm Switch",
+              "description": "Add a switch for Dim to Warm.",
               "type": "boolean",
-              "default": false,
-              "condition": {
-                "functionBody": "return model.fans[arrayIndices].fanModel !== 'Haiku L Series' && model.fans[arrayIndices].fanModel !== 'Haiku H/I Series';"
-              }
+              "default": false
             },
             "showEcoModeSwitch": {
               "title": "Eco Mode Switch",
-              "description": "Add a switch for 'Eco Mode'",
+              "description": "Add a switch for Eco Mode.",
               "type": "boolean",
-              "default": false,
-              "condition": {
-                "functionBody": "return model.fans[arrayIndices].fanModel !== 'i6';"
-              }
+              "default": false
             },
             "disableDirectionControl": {
               "title": "Disable Direction Control",
-              "description": "Prevents user from changing fan direction from HomeKit.",
+              "description": "Hide the fan direction control in HomeKit.",
+              "type": "boolean",
+              "default": false
+            },
+            "probeFrequency": {
+              "title": "Probe Frequency (ms)",
+              "description": "Keep-alive probe interval in milliseconds. Set to 0 to disable probing.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 60000
+            },
+            "noLights": {
+              "title": "Hide Light Controls",
+              "description": "Hide all light-related services for this fan.",
+              "type": "boolean",
+              "default": false
+            },
+            "showHumidity": {
+              "title": "Show Humidity Sensor",
+              "description": "Expose the humidity sensor when supported by the fan.",
+              "type": "boolean",
+              "default": true
+            },
+            "showTemperature": {
+              "title": "Show Temperature Sensor",
+              "description": "Expose the temperature sensor when supported by the fan.",
+              "type": "boolean",
+              "default": true
+            },
+            "downlightEquipped": {
+              "title": "Override Downlight Detection",
+              "description": "Override automatic downlight detection.",
+              "type": "boolean"
+            },
+            "uplightEquipped": {
+              "title": "Override Uplight Detection",
+              "description": "Override automatic uplight detection.",
+              "type": "boolean"
+            },
+            "showFanOccupancySensor": {
+              "title": "Show Fan Occupancy Sensor",
+              "description": "Expose the fan occupancy sensor when supported by the fan.",
+              "type": "boolean",
+              "default": false
+            },
+            "showLightOccupancySensor": {
+              "title": "Show Light Occupancy Sensor",
+              "description": "Expose the light occupancy sensor when supported by the fan.",
+              "type": "boolean",
+              "default": false
+            },
+            "showStandbyLED": {
+              "title": "Show Standby LED Controls",
+              "description": "Expose night light / standby LED controls when supported by the fan.",
+              "type": "boolean",
+              "default": false
+            },
+            "enableIncrementalButtons": {
+              "title": "Enable +/- Buttons",
+              "description": "Add +/- buttons for brightness and fan speed.",
+              "type": "boolean",
+              "default": false
+            },
+            "incrementalButtonsDelay": {
+              "title": "Incremental Button Reset Delay (ms)",
+              "description": "Auto-reset delay for incremental buttons in milliseconds.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 500
+            },
+            "enableDebugPort": {
+              "title": "Enable Debug Port",
+              "description": "Enable a localhost-only TCP debug port for runtime debug level changes.",
               "type": "boolean",
               "default": false
             }

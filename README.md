@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2
+## homebridge-bigassfans-2 v1.0.2
 
 </span>
 
@@ -35,6 +35,12 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.0.2**
+- Hardened protobuf parsing so malformed or truncated frames are safely dropped instead of risking a stuck parse loop.
+- The optional debug TCP port now listens on `127.0.0.1` only.
+- Fans removed from `config.fans` are automatically cleaned out of the Homebridge accessory cache.
+- The Homebridge UI now exposes the additional documented configuration options from this README.
 
 ---
 
@@ -168,7 +174,7 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
 | `showStandbyLED` | `false` | Expose night light / standby LED controls |
 | `enableIncrementalButtons` | `false` | Add +/- buttons for brightness and fan speed |
 | `incrementalButtonsDelay` | `500` | Auto-reset delay for incremental buttons (ms) |
-| `enableDebugPort` | `false` | Enable TCP debug port for runtime debug level changes |
+| `enableDebugPort` | `false` | Enable a localhost-only TCP debug port for runtime debug level changes |
 
 ### Migrating from homebridge-i6-bigassfans
 
@@ -201,6 +207,7 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
 3. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
 
 4. **Check the [Issues](https://github.com/applemanj/homebridge2-bigAssFans/issues)** for known problems and solutions.
+5. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
 
 ### Tips
 

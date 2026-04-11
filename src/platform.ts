@@ -41,10 +41,14 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
    */
   initDevices() {
     this.log.info('Init - initializing devices');
+    const configuredUUIDs = new Set<string>();
 
     if (this.config.fans && Array.isArray(this.config.fans)) {
       for (const fan of this.config.fans) {
         if (fan) {
+          if (fan.mac) {
+            configuredUUIDs.add(this.api.hap.uuid.generate(fan.mac));
+          }
           this.setupFan(fan);
         }
       }
@@ -57,6 +61,15 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
       this.log.info('Init - no fan configuration found');
       this.log.info('Missing fans in your platform config');
       this.log.info('-------------------------------------------');
+    }
+
+    const staleAccessories = this.accessories.filter(accessory => !configuredUUIDs.has(accessory.UUID));
+    if (staleAccessories.length > 0) {
+      staleAccessories.forEach(accessory => {
+        this.log.info('Removing stale accessory from cache:', accessory.displayName);
+      });
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, staleAccessories);
+      this.accessories.splice(0, this.accessories.length, ...this.accessories.filter(accessory => configuredUUIDs.has(accessory.UUID)));
     }
   }
 
