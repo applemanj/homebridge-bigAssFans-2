@@ -1,5 +1,27 @@
 ## Release Notes
 
+### v1.1.0
+
+**Bug Fixes**
+- **Standby LED naming crash** — `makeStandbyLED` was calling `setName` on `downlightBulbService` instead of `standbyLEDBulbService`, crashing on fans without a downlight and renaming the wrong service when present.
+- **Standby LED color corruption** — RGB values ≥ 128 were sent as single bytes, but protobuf varints for 128-255 require two bytes. Messages now use proper varint encoding with dynamic length calculation.
+- **Standby color preset crash** — Out-of-bounds preset index from the fan (≥ 10 or < 0) caused an uncaught TypeError. Now validated with a warning log.
+- **Light auto switch crash** — `targetedlightOnState` called `updateCharacteristic` on the light auto switch service without checking if it was configured, crashing when `showLightAutoSwitch` was false.
+- **Target bulb double execution** — `setTargetBulb` was called immediately AND inserted into the funStack, causing it to run twice and potentially re-setting the target to a stale value.
+- **Incremental button cache cleanup** — `zapService` used wrong names (`downlightDarkenService` vs actual `downlightDarkenButton`), so cached button services were never cleaned up when `enableIncrementalButtons` was disabled.
+- **ETIMEDOUT backoff typo** — Retry progression had a 5-day value (432000s) before the 1-day max (86400s). Fixed to 12 hours (43200s).
+- **Silent disconnection** — Added `close` event handler on the TCP socket so clean FIN packets from the fan trigger reconnection instead of leaving the connection silently dead.
+- **Socket leak on reconnect** — Old socket is now explicitly destroyed with listeners removed before creating a new connection, preventing dual event handling.
+- **Varint decoding overflow** — Bitwise `r << 7` truncates at 2²⁸ for 32-bit signed integers. Replaced with `r * 128 + a[index]` to handle large values like uptime timestamps correctly.
+
+**Improvements**
+- `messagesLogged` changed from unbounded array to `Set` for O(1) lookup and to prevent memory growth over long runtimes.
+- SLIP unstuffing now handles lone ESC at end of buffer gracefully instead of reading past the buffer.
+- Removed dead code: `sortFunction`, `codeWatch`, `fanOnMeansAuto`, `lightOnMeansAuto`.
+- Added type annotations: `client` (`net.Socket | undefined`), `probeTimeout` (`ReturnType<typeof setInterval> | undefined`).
+
+---
+
 ### v1.0.3
 
 **Security / Reliability**

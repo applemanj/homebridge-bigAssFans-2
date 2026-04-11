@@ -161,7 +161,7 @@ export class BigAssFans_i6PlatformAccessory {
   public Name = 'naamloos';
   public ProbeFrequency = 60000;
 
-  public probeTimeout;
+  public probeTimeout: ReturnType<typeof setInterval> | undefined;
 
   public modelUnknown = true;
   public firmwareUnknown = true;
@@ -182,10 +182,7 @@ export class BigAssFans_i6PlatformAccessory {
 
   public bulbCount = 0;
   public targetBulb = -1;
-  public fanOnMeansAuto = undefined;
-  public lightOnMeansAuto = undefined;
-
-  public client;
+  public client: net.Socket | undefined;
   public oneByteHeaders:number[] = [];
 
   // to keep track of when they change - for hints to eventually figure out what they mean
@@ -197,7 +194,7 @@ export class BigAssFans_i6PlatformAccessory {
   // per-instance debug/state tracking (was incorrectly module-level)
   public lastDebugMessage = '';
   public lastDebugMessageTag = '';
-  public messagesLogged: string[] = [];
+  public messagesLogged: Set<string> = new Set();
   public debugLastFanOccupancyValue = 0;
   public debugLastLightOccupancyValue = 0;
   public uptimeLogged = false;
@@ -756,9 +753,8 @@ export class BigAssFans_i6PlatformAccessory {
     const green = Math.round(rgb[1]);
     const blue = Math.round(rgb[2]);
 
-    // send preset: custom, and rgb values
-    clientWrite(this.client,
-      [0x0c, 0x12, 0x0f, 0x12, 0x0d, 0x1a, 0x0b, 0x9a, 0x05, 0x08, 0x08, 0x00, 0x20, red, 0x28, green, 0x30, blue, 0x0c], this);
+    // send preset: custom, and rgb values (use varints for RGB values >= 128)
+    clientWrite(this.client, buildStandbyLEDColorMessage(red, green, blue), this);
   }
 
   async getStandbyLEDHue(): Promise<CharacteristicValue> {
@@ -777,9 +773,8 @@ export class BigAssFans_i6PlatformAccessory {
     const green = Math.round(rgb[1]);
     const blue = Math.round(rgb[2]);
 
-    // send preset: custom, and rgb values
-    clientWrite(this.client,
-      [0x0c, 0x12, 0x0f, 0x12, 0x0d, 0x1a, 0x0b, 0x9a, 0x05, 0x08, 0x08, 0x00, 0x20, red, 0x28, green, 0x30, blue, 0x0c], this);
+    // send preset: custom, and rgb values (use varints for RGB values >= 128)
+    clientWrite(this.client, buildStandbyLEDColorMessage(red, green, blue), this);
   }
 
   async getStandbyLEDSaturation(): Promise<CharacteristicValue> {
@@ -892,7 +887,7 @@ function makeStandbyLED(pA: BAF) {
   pA.accessory.addService(pA.platform.Service.Lightbulb, 'standbyLED', 'light-3');
 
   const capitalizeName = pA.Name[0] === pA.Name[0].toUpperCase();
-  setName(pA, pA.downlightBulbService, pA.Name + (capitalizeName ? ' Night Light' : ' night light'));
+  setName(pA, pA.standbyLEDBulbService, pA.Name + (capitalizeName ? ' Night Light' : ' night light'));
 
   // On/Off is actually tied to Enabled
   // onSet - ignore
@@ -1255,10 +1250,10 @@ function makeServices(pA: BAF) {
       .onSet(pA.setFanFasterServiceOnState.bind(pA));
 
   } else {
-    zapService(pA, 'downlightDarkenService');
-    zapService(pA, 'downlightLightenService');
-    zapService(pA, 'fanSlowerService');
-    zapService(pA, 'fanFasterService');
+    zapService(pA, 'downlightDarkenButton');
+    zapService(pA, 'downlightLightenButton');
+    zapService(pA, 'fanSlowerButton');
+    zapService(pA, 'fanFasterButton');
   }
 
   debugLog(pA, 'progress', 1, 'leaving makeServices');
@@ -1293,6 +1288,9 @@ function networkSetup(pA: BAF) {
   let retryCount = 0;
 
   function sendInitSequence() {
+    if (!pA.client) {
+      return;
+    }
     pA.client.setKeepAlive(true);
     clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x06], pA);  // get capabilities
     clientWrite(pA.client, [0x12, 0x02, 0x1a, 0x00], pA);  // BAF app seemed to send this so we will also
@@ -1303,6 +1301,12 @@ function networkSetup(pA: BAF) {
   function scheduleReconnect(errCode: string) {
     const retrySeconds = backOff(errCode, retryCount);
     retryCount++;
+
+    // destroy old socket to prevent leaked event handlers
+    if (pA.client) {
+      pA.client.removeAllListeners();
+      pA.client.destroy();
+    }
     pA.client = undefined;
 
     setTimeout(() => {
@@ -1315,6 +1319,10 @@ function networkSetup(pA: BAF) {
         sendInitSequence();  // re-send init on every reconnect (issue #41)
       });
       pA.client.on('error', handleError);
+      pA.client.on('close', () => {
+        debugLog(pA, 'reconnect', 1, `${pA.Name} connection closed by remote`);
+        scheduleReconnect('ECONNRESET');
+      });
       pA.client.on('data', (data: Buffer) => {
         onData(pA, data);
       });
@@ -1371,6 +1379,10 @@ function networkSetup(pA: BAF) {
   });
 
   pA.client.on('error', handleError);
+  pA.client.on('close', () => {
+    debugLog(pA, 'reconnect', 1, `${pA.Name} connection closed by remote`);
+    scheduleReconnect('ECONNRESET');
+  });
   pA.client.on('data', (data: Buffer) => {
     onData(pA, data);
   });
@@ -1398,7 +1410,7 @@ function networkSetup(pA: BAF) {
           } else if (s === 'p uptime') {
             c.write(`uptime: ${toDaysHoursMinutesString(pA.uptimeMinutes)}\n`);
           } else if (s === 'ECONNRESET') {
-            pA.client.destroy(new Error('ECONNRESET'));
+            pA.client?.destroy(new Error('ECONNRESET'));
           } else {
             const a = s.split(', ');
 
@@ -1420,7 +1432,7 @@ function networkSetup(pA: BAF) {
   }
 }
 
-const timedOutBackOff = [5, 5, 5, 600, 1800, 3600, 21600, 432000, 86400];
+const timedOutBackOff = [5, 5, 5, 600, 1800, 3600, 21600, 43200, 86400];
 function backOff(errorMsgString: string, retryCount: number) : number {
   switch (errorMsgString) {
     case 'ETIMEDOUT':
@@ -1550,15 +1562,6 @@ function onData(pA: BAF, data: Buffer) {
         });
       }
     }
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function sortFunction(a, b) {
-  if (a[0] === b[0]) {
-    return 0;
-  } else {
-    return (a[0] < b[0]) ? -1 : 1;
   }
 }
 
@@ -1748,7 +1751,7 @@ function targetedlightOnState(value:number, service:Service, states:lightStates,
       service.updateCharacteristic(pA.platform.Characteristic.On, states.On);
     }
 
-    if (pA.lightAutoSwitchOn) {
+    if (pA.lightAutoSwitchOn && pA.showLightAutoSwitch && pA.lightAutoSwitchService) {
       pA.lightAutoSwitchOn = false;
       debugLog(pA, ['light', 'characteristics'], [1, 3], `update ${description} light auto switch off: ` + pA.lightAutoSwitchOn);
       pA.lightAutoSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.lightAutoSwitchOn);
@@ -1970,8 +1973,12 @@ function standbyColorPreset(s: string, pA:BAF) {
       [300, 100, 100],   // 9 - pink
     ];
 
-    // whether or no there's currently a standbyLEDBulbService, we want to store the color.
+    // whether or not there's currently a standbyLEDBulbService, we want to store the color.
     const n = Number(s);
+    if (n < 0 || n >= hsvPresets.length || !hsvPresets[n]) {
+      debugLog(pA, 'redflags', 1, `standbyColorPreset: invalid preset index ${n}, ignoring`);
+      return;
+    }
     const hue = hsvPresets[n][0];
     const saturation = hsvPresets[n][1];
     // const value = hsvPresets[n][2];
@@ -2042,20 +2049,6 @@ function mysteryCode(value: string, pA:BAF, code: string) {
   }
 }
 
-// a little hack for codes under investigation
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function codeWatch(s: string, v: string|number|Buffer, m: Buffer, pA:BAF) {
-  if (s === '0xe8, 0x01') {
-    debugLog(pA, 'cluing', 5, 'code watch - s: ' + s + ', m: ' + hexFormat(m));
-  } if (s === '0xd8, 0x01') {
-    debugLog(pA, 'cluing', 5, 'code watch - s: ' + s + ', m: ' + hexFormat(m));
-  } else if (s === '0x18, 0xc0') {
-    debugLog(pA, 'cluing', 5, 'code watch - s: ' + s + ', m: ' + hexFormat(m));
-  } else if (s === '0xda, 0x0a') {
-    debugLog(pA, 'cluing', 5, 'code watch - s: ' + s + ', v: ' + hexFormat(v));
-  }
-}
-
 const ESC = 0xDB;
 const START = 0xc0;
 const ESC_STUFF = 0xDD;
@@ -2070,13 +2063,19 @@ function unstuff(data: Buffer): Buffer {
   let dataIndex = 0;
   let unstuffedDataIndex = 0;
   while (dataIndex < data.length) {
-    if (data[dataIndex] === ESC && data[dataIndex+1] === START_STUFF) {
-      unstuffedData[unstuffedDataIndex++] = START;
-      dataIndex += 2; // skip over the ESC and the START_STUFF
-    } else if (data[dataIndex] === ESC && data[dataIndex+1] === ESC_STUFF) {
-      unstuffedData[unstuffedDataIndex++] = ESC;
-      dataIndex += 2; // skip over the ESC and the ESC_STUFF
+    if (data[dataIndex] === ESC && dataIndex + 1 < data.length) {
+      if (data[dataIndex+1] === START_STUFF) {
+        unstuffedData[unstuffedDataIndex++] = START;
+        dataIndex += 2;
+      } else if (data[dataIndex+1] === ESC_STUFF) {
+        unstuffedData[unstuffedDataIndex++] = ESC;
+        dataIndex += 2;
+      } else {
+        // invalid escape sequence — pass through raw byte
+        unstuffedData[unstuffedDataIndex++] = data[dataIndex++];
+      }
     } else {
+      // regular byte, or lone ESC at end of buffer (malformed — pass through)
       unstuffedData[unstuffedDataIndex++] = data[dataIndex++];
     }
   }
@@ -2111,6 +2110,23 @@ function varint_encode(n: number) : number[] {
   }
   a.push(n & 0x7F);
   return a;
+}
+
+/** Builds a standby LED color message with proper varint encoding for RGB values >= 128. */
+function buildStandbyLEDColorMessage(red: number, green: number, blue: number): number[] {
+  // inner payload: preset=custom(0), red, green, blue
+  const inner: number[] = [0x08, 0x00];  // preset = 0 (custom)
+  inner.push(0x20, ...varint_encode(red));
+  inner.push(0x28, ...varint_encode(green));
+  inner.push(0x30, ...varint_encode(blue));
+  // wrap in nested length-delimited fields: 0x9a 0x05 <len> <inner>
+  const field19: number[] = [0x9a, 0x05, ...varint_encode(inner.length), ...inner];
+  // 0x1a <len> <field19>
+  const field3: number[] = [0x1a, ...varint_encode(field19.length), ...field19];
+  // 0x12 <len> <field3>
+  const field2inner: number[] = [0x12, ...varint_encode(field3.length), ...field3];
+  // 0x0c 0x12 <len> ... 0x0c (group delimiters)
+  return [0x0c, 0x12, ...varint_encode(field2inner.length), ...field2inner, 0x0c];
 }
 
 function hexFormat(arg) {
@@ -2151,20 +2167,20 @@ function debugLog(pA:BAF, logTag:string|string[], logLevel:number|number[], logM
 }
 
 function debugLogOnce(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
-  if (pA.messagesLogged.includes(logMessage)) {
+  if (pA.messagesLogged.has(logMessage)) {
     return;
   } else {
     debugLog(pA, logTag, logLevel, logMessage);
-    pA.messagesLogged.push(logMessage);
+    pA.messagesLogged.add(logMessage);
   }
 }
 
 function infoLogOnce(pA:BAF, logMessage: string) {
-  if (pA.messagesLogged.includes(logMessage)) {
+  if (pA.messagesLogged.has(logMessage)) {
     return;
   } else {
     pA.platform.log.info(pA.Name + ' - ' + logMessage);
-    pA.messagesLogged.push(logMessage);
+    pA.messagesLogged.add(logMessage);
   }
 }
 
@@ -2206,7 +2222,7 @@ function getVarint(b: Buffer): [Buffer, number] {
   }
 
   for (let index = a.length - 1; index >= 0; index--) {
-    r = (r << 7) | a[index];
+    r = (r * 128) + a[index];
   }
 
   return [b.subarray(a.length), r];
@@ -2383,10 +2399,6 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                 debugLog(pA, 'light', 1, `buildFunStack - target bulb: ${v}`);
                 funStack.splice(0, 0, [setTargetBulb, String(v)]);
                 debugLog(pA, 'light', 1, 'inserted setTargetBulb at start of funStack');
-                // funStack.push([setTargetBulb, String(v)]);
-
-                setTargetBulb(String(v), pA);
-
                 break;
               case 85:  // light occupied
                 [b, v] = getValue(b);
