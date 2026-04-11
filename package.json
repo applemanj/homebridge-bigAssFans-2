@@ -2,12 +2,12 @@
   "private": false,
   "displayName": "Big Ass Fans (Homebridge 2)",
   "name": "homebridge-bigassfans-2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Homebridge 2.0 plugin for Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/applemanj/homebridge2-bigAssFans"
+    "url": "git+https://github.com/applemanj/homebridge2-bigAssFans.git"
   },
   "bugs": {
     "url": "https://github.com/applemanj/homebridge2-bigAssFans/issues"
