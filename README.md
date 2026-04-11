@@ -81,7 +81,7 @@ sudo npm install -g homebridge-bigassfans-2
 #### Install from this repo
 
 ```sh
-sudo npm install -g applemanj/homebridge2-bigAssFans
+sudo npm install -g applemanj/homebridge-bigAssFans-2
 ```
 
 ### Configuration
@@ -206,7 +206,7 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
 
 3. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
 
-4. **Check the [Issues](https://github.com/applemanj/homebridge2-bigAssFans/issues)** for known problems and solutions.
+4. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
 5. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
 
 ### Tips
