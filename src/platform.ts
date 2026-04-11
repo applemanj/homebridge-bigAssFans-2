@@ -4,19 +4,14 @@ import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { BigAssFans_i6PlatformAccessory } from './platformAccessory';
 
 /**
- * HomebridgePlatform
- * This class is the main constructor for your plugin, this is where you should
- * parse the user config and discover/register accessories with Homebridge.
+ * BigAssFans_i6Platform
+ *
+ * Parses the user config and discovers/registers fan accessories with Homebridge.
  */
 export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
-  // Assigned in constructor after api is initialized (TypeScript 5 requires this pattern)
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
-
-  // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
-
-  // client: any;
 
   constructor(
     public readonly log: Logger,
@@ -27,37 +22,30 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
     this.Characteristic = this.api.hap.Characteristic;
     this.log.debug('Finished initializing platform');
 
-    // When this event is fired it means Homebridge has restored all cached accessories from disk.
-    // Dynamic Platform plugins should only register new accessories after this event was fired,
-    // in order to ensure they weren't added to homebridge already. This event can also be used
-    // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
-      // run the method to discover / register your devices as accessories
       this.initDevices();
     });
   }
 
   /**
-   * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to setup event handlers for characteristics and update respective values.
+   * Called by Homebridge for each cached accessory restored from disk at startup.
    */
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info('Loading accessory from cache:', accessory.displayName);
-
-    // add the restored accessory to the accessories cache so we can track if it has already been registered
     this.accessories.push(accessory);
   }
 
+  /**
+   * Reads fan entries from config and creates/restores accessories for each one.
+   */
   initDevices() {
     this.log.info('Init - initializing devices');
 
-
-    // read from config.fans
     if (this.config.fans && Array.isArray(this.config.fans)) {
       for (const fan of this.config.fans) {
         if (fan) {
-          i6FanSetUp(this, fan);
+          this.setupFan(fan);
         }
       }
     } else if (this.config.fans) {
@@ -70,87 +58,50 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
       this.log.info('Missing fans in your platform config');
       this.log.info('-------------------------------------------');
     }
+  }
 
-    function i6FanSetUp(platform: BigAssFans_i6Platform, fan) {
-      // check if we have mandatory device info
-      try {
-        if (!fan.name) {
-          throw new Error('"name" is required but not defined!');
-        }
-        if (!fan.ip) {
-          throw new Error('"ip" is required but not defined for ${fan.name}!');
-        }
-        if (!fan.mac) {
-          throw new Error('"mac" is required but not defined for ${fan.name}!');
-        }
-      } catch (error) {
-        platform.log.error((error as Error).message);
-        platform.log.error('Failed to create platform device, missing mandatory information!');
-        platform.log.error('Please check your device config!');
-        return;
+  /**
+   * Sets up a single fan accessory: validates config, restores from cache or creates new,
+   * and instantiates the accessory handler.
+   */
+  private setupFan(fan) {
+    try {
+      if (!fan.name) {
+        throw new Error('"name" is required but not defined!');
+      }
+      if (!fan.ip) {
+        throw new Error(`"ip" is required but not defined for ${fan.name}!`);
+      }
+      if (!fan.mac) {
+        throw new Error(`"mac" is required but not defined for ${fan.name}!`);
+      }
+    } catch (error) {
+      this.log.error((error as Error).message);
+      this.log.error('Failed to create platform device, missing mandatory information!');
+      this.log.error('Please check your device config!');
+      return;
+    }
+
+    const uuid = this.api.hap.uuid.generate(fan.mac);
+    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+
+    if (existingAccessory) {
+      this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+
+      if (existingAccessory.context.device !== fan) {
+        existingAccessory.context.device = fan;
+        this.api.updatePlatformAccessories([existingAccessory]);
       }
 
-      // checkDevice(platform, fan.ip, (client, data: Buffer) => {
-      //   if (data[0] !== 0xc0) {
-      //     return;
-      //   }
+      new BigAssFans_i6PlatformAccessory(this, existingAccessory);
+    } else {
+      this.log.info('Adding new accessory:', fan.name);
 
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-      const uuid = platform.api.hap.uuid.generate(fan.mac);
+      const accessory = new this.api.platformAccessory(fan.name, uuid);
+      accessory.context.device = fan;
 
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-      const existingAccessory = platform.accessories.find(accessory => accessory.UUID === uuid);
-      // for debugging, uncomment the following and comment out the line above to remove the accessory from cache.
-      // let existingAccessory = platform.accessories.find(accessory => accessory.UUID === uuid);
-      // if (existingAccessory) {
-      //   platform.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-      //   platform.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
-      //   existingAccessory = platform.accessories.find(accessory => accessory.UUID === uuid);
-      // }
-
-      if (existingAccessory) {
-        // the accessory already exists
-        platform.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-        if (existingAccessory.context.device !== fan) {
-          existingAccessory.context.device = fan;
-          platform.api.updatePlatformAccessories([existingAccessory]);
-        }
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        new BigAssFans_i6PlatformAccessory(platform, existingAccessory);
-
-        // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-        // remove platform accessories when no longer present
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
-      } else {
-        // the accessory does not yet exist, so we need to create it
-        platform.log.info('Adding new accessory:', fan.name);
-
-        // create a new accessory
-        const accessory = new platform.api.platformAccessory(fan.name, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = fan;
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
-        new BigAssFans_i6PlatformAccessory(platform, accessory);
-
-        // link the accessory to your platform
-        platform.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      }
-      // });
+      new BigAssFans_i6PlatformAccessory(this, accessory);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     }
   }
 }
-

@@ -4,209 +4,223 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-i6-bigassfans (v0.6.0)
+## homebridge2-bigassfans (v1.0.0-beta.1)
 
-[![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
-<!-- [![homebridge-miot](https://badgen.net/npm/v/homebridge-bigassfans-i6?icon=npm)](https://www.npmjs.com/package/homebridge-bigassfans-i6)
-[![mit-license](https://badgen.net/npm/license/lodash)](https://github.com/oogje/homebridge-bigassfans-i6/blob/master/LICENSE)
-<!-- [![follow-me-on-twitter](https://badgen.net/twitter/follow/merdok_dev?icon=twitter)](https://twitter.com/merdok_dev) -->
-<!-- [![join-discord](https://badgen.net/badge/icon/discord?icon=discord&label=homebridge-xiaomi-fan)](https://discord.gg/AFYUZbk) -->
 </span>
 
-`homebridge-i6-bigassfans` is a plugin for Homebridge which allows you to control Big Ass Fans i6, es6, Haiku H/I Series and Haiku L Series
-fans with firmware version 3.0 or greater.
+`homebridge2-bigassfans` is a Homebridge 2.0 plugin for controlling Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series ceiling fans with firmware version 3.0 or greater.
 
-The plugin name reflects that it was created to support, and was limited to, i6 model fans when no other homebridge
-alternative was available. 
-Some time around the beginning of April 2022, with a firmware update to the Haiku series fans, Big Ass Fans changed the Haiku's
-communication protocol to be compatible with the i6 model, and therefore this plugin. 
-Having access only to an i6 fan, I collaborated with Haiku fan owners (notably @pponce) to add support for their fans. 
-The es6 model seems to work as well.
+This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge-i6-bigAssFans) by [@oogje](https://github.com/oogje), updated and modernized for Homebridge 2.0.
 
-### **Bugs**
+### What's New in This Fork
 
-The network connection to the fan will reset on occasion.  I try to handle that gracefully but if it happens at the moment you
-issue a command (e.g., turn on the light) as opposed to when the periodic probe message is issued, the command will be ignored.  Try again after two seconds.
+**Homebridge 2.0 / Fanv2 Service**
+- Uses the modern `Fanv2` HomeKit service instead of the legacy `Fan` service.
+- **Whoosh Mode** is now a native `SwingMode` characteristic in the fan tile -- no separate switch needed.
+- **Fan Auto Mode** is now a native `TargetFanState` characteristic (Manual / Auto) in the fan tile -- no separate switch needed.
+- `CurrentFanState` reports whether the fan is Inactive, Idle, or Blowing Air.
+- Legacy cached `Fan` and `whooshSwitch` services are automatically cleaned up on upgrade.
 
-Occasionally HomeKit will briefly show the light (if equipped) or the light auto switch (if configured) "on" even though it's actually off.
+**Bug Fixes**
+- **Connection stability** -- Reconnections now re-send the initialization and capability query to the fan, fixing the issue where a daily restart was required to restore communication (upstream [#41](https://github.com/oogje/homebridge-i6-bigAssFans/issues/41)).
+- **Fans offline at startup** -- All connection errors (including `ECONNREFUSED`) now trigger automatic retry with exponential backoff, so fans that are powered off or unreachable at boot will connect once available (upstream [#35](https://github.com/oogje/homebridge-i6-bigAssFans/issues/35)).
+- **mDNS hostname support** -- Removed forced IPv4 (`family: 4`) from the TCP connection, allowing mDNS `.local` hostnames and IPv6 to work correctly (upstream [#29](https://github.com/oogje/homebridge-i6-bigAssFans/issues/29)).
+- **varint encoding bug** -- Fixed an operator-precedence bug in `varint_encode` where the continuation bit (`| 0x80`) was applied to the return value of `Array.push()` instead of the byte being pushed. This could cause incorrect protobuf encoding for values over 127 (e.g., color temperature).
+- **Multi-fan shared state** -- Eight module-level variables (debug state, reboot tracking, occupancy tracking, etc.) were shared across all fan instances, causing cross-talk between fans in multi-fan setups. These are now per-instance.
 
+**Code Quality**
+- Removed unnecessary `declare const Buffer` that suppressed TypeScript type checking.
+- Fixed `debugLevels` type from `number[]` to `Record<string, number>`.
+- Modernized `import net = require('net')` to `import * as net from 'net'`.
+- Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
+- Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
+- Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
 
-### **Features**
+---
 
-* Turn fan and/or light(s) on or off!
-* Change speed, and direction (Keep in mind Big Ass Fans discourages reversing speed.)
-* Ability to disable the fan direction control.
-* Change brightness level of LED light.
-* Control UV-C light
-* Exposes Motion Sensors
-* Display the fan's bluetooth remote's temperature and humidity sensors (i6 only).
-* Display the fan's temperature sensors (Haiku Fans).
-* Turn Whoosh Mode on or off.
-* Turn Dim to Warm on or off (i6 Fans).
-* Turn Fan Auto mode on or off.
-* Turn Light Auto mode on or off.
-* Turn Eco Mode on or off (Haiku fans).
+### Features
 
-### **Installation**
+- Turn fan and/or light(s) on or off
+- Change fan speed and direction (Big Ass Fans discourages reversing speed)
+- Ability to disable the fan direction control
+- Change brightness level of LED light
+- Adjust color temperature (i6 downlight)
+- Control UV-C light
+- Whoosh Mode (native SwingMode in the fan tile)
+- Fan Auto Mode (native TargetFanState in the fan tile)
+- Light Auto Mode (optional switch)
+- Dim to Warm (optional switch, i6 fans)
+- Eco Mode (optional switch, Haiku fans)
+- Expose occupancy (motion) sensors
+- Display temperature sensor (Haiku fans, i6 with remote)
+- Display humidity sensor (i6 with remote)
+- Night Light / Standby LED control (brightness, color)
+- Incremental brightness and speed buttons (optional)
 
 ### Requirements
 
-* Homebridge 1.8.0 up to (but not including) 3.0.0
-* Node.js 18.20.4 or newer
+- **Homebridge 2.0** (2.0.0-beta or later)
+- **Node.js** 20.15.1 or newer (20.x, 22.x, or 24.x)
 
-Homebridge 2.x is fully supported.
+### Installation
 
-If you are not already running homebridge you'll find how to install it in the homebridge [documentation](https://github.com/homebridge/homebridge#readme).  After you install homebridge you can install and configure the `homebridge-i6-bigassfans` plugin through `homebridge-config-ui-x` using a command line and editor as described below.
+If you are not already running Homebridge, see the [Homebridge documentation](https://github.com/homebridge/homebridge#readme) to get started.
 
-#### Install from published npm package
-
-```sh
-sudo npm install -g homebridge-i6-bigassfans
-```
-
-To install a specific pre-release version from npm, append the version after `@`. For example:
+#### Install from npm
 
 ```sh
-sudo npm install -g homebridge-i6-bigassfans@0.6.0-beta9
+sudo npm install -g homebridge2-bigassfans
 ```
 
-To install a specific fork
+#### Install from this repo
+
 ```sh
-sudo npm install -g <github_username>/homebridge-i6-bigassfans
+sudo npm install -g applemanj/homebridge2-bigAssFans
 ```
 
-#### **Configuration**
+### Configuration
 
-Add the `BigAssFans-i6` platform in `config.json` in your home directory inside `.homebridge`.
+Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configuration directory.
 
-Add your fan(s) in the `fans` array.
+> **Note:** The `platform` value remains `"BigAssFans-i6"` for compatibility.
 
-Example basic configuration:
+#### Minimal Example
 
-```js
+```json
 {
   "platforms": [
     {
       "platform": "BigAssFans-i6",
-            "fans": [
-                {
-                    "name": "Big Fan i6",
-                    "mac": "20:F8:5E:00:00:00",
-                    "ip": "192.168.7.150"
-                }
-            ]
+      "fans": [
+        {
+          "name": "Living Room Fan",
+          "mac": "20:F8:5E:00:00:00",
+          "ip": "192.168.1.150"
+        }
+      ]
     }
   ]
 }
 ```
 
-Example configuration with optional params and multiple fans:
+#### Multi-Fan Example
 
-```js
+```json
 {
   "platforms": [
     {
       "platform": "BigAssFans-i6",
-              "fans": [
-                  {
-                    "name": "Big Fan i6",
-                    "mac": "20:F8:5E:00:00:00",
-                    "ip": "BigFani6.local",
-                    "showFanAutoSwitch": true,
-                    "showLightAutoSwitch": true,
-                    "showWhooshSwitch": false,
-                    "showDimToWarmSwitch": false
-                  },
-                  {
-                    "name": "BigAssFans Haiku",
-                    "mac": "20:F8:5E:00:00:01",
-                    "ip": "192.168.1.151",
-                    "showFanAutoSwitch": true,
-                    "showLightAutoSwitch": true,
-                    "showWhooshSwitch": true,
-                    "showEcoModeSwitch": true
-                   }
-                ]
+      "fans": [
+        {
+          "name": "Living Room i6",
+          "mac": "20:F8:5E:00:00:00",
+          "ip": "livingroom-fan.local",
+          "showLightAutoSwitch": true,
+          "showDimToWarmSwitch": true
+        },
+        {
+          "name": "Bedroom Haiku",
+          "mac": "20:F8:5E:00:00:01",
+          "ip": "192.168.1.151",
+          "showLightAutoSwitch": true,
+          "showEcoModeSwitch": true
+        }
+      ]
     }
   ]
 }
 ```
 
-#### Platform configuration fields
+### Configuration Fields
 
-* `platform` [required]
-Should always be **"BigAssFans-i6"**.
-* `fans` [required]
-A list of your fans.
+#### Required
 
-#### General configuration fields
+| Field | Description |
+|-------|-------------|
+| `platform` | Must be `"BigAssFans-i6"` |
+| `fans` | Array of fan objects |
+| `name` | Display name for the fan |
+| `ip` | IP address or hostname (mDNS `.local` names supported) |
+| `mac` | MAC address (found in the Big Ass Fans app under Wi-Fi settings) |
 
-* `name` [required]
-Name of your fan.
-* `ip` [required]
-IP address or hostname of your fan.  IP address can be found in the Big Ass Fans app's Wi-Fi settings screen.
-* `mac` [required]
-MAC address of your fan.  Can be found in the Big Ass Fans app's Wi-Fi settings screen.
-* `showWhooshSwitch` [optional]
-Adds accessory switch for Whoosh Mode (true/false, defaults to false).
-* `showDimToWarmSwitch` [optional]
-Adds accessory switch for Dim to Warm (true/false, defaults to false).
-* `showFanAutoSwitch` [optional]
-Adds accessory switch for the fan's Fan Auto mode (true/false, defaults to false).
-* `showLightAutoSwitch` [optional]
-Adds accessory switch for the fan's Light Auto mode (true/false, defaults to false).
-* `showEcoModeSwitch` [optional]
-Adds accessory switch for the fan's Eco mode (true/false, defaults to false).
+#### Optional Switches
 
-#### Advanced Configuration Fields
+| Field | Default | Description |
+|-------|---------|-------------|
+| `showFanAutoSwitch` | `false` | Add a legacy separate switch for Fan Auto (also available natively in fan tile via TargetFanState) |
+| `showLightAutoSwitch` | `false` | Add a switch for Light Auto mode |
+| `showDimToWarmSwitch` | `false` | Add a switch for Dim to Warm (i6 fans) |
+| `showEcoModeSwitch` | `false` | Add a switch for Eco Mode (Haiku fans) |
+| `disableDirectionControl` | `false` | Hide the fan direction control |
 
-* `probeFrequency` [optional]
-Sets the frequency that probe messages are sent to the fan.  A frequency 0 milliseconds turns probing off (defaults to 60000 milliseconds).
+#### Advanced
 
-#### Other Configuration Fields
-* `noLights` [optional] Eliminates light switches (defaults to false)
-* `showHumidity` [optional] Exposes humidity sensor (defaults to true)
-* `showTemperature` [optional] Exposes temperature sensor (defaults to true).
-* `downlightEquipped` [optional] Overrides downlight detection (defaults to undefined)
+| Field | Default | Description |
+|-------|---------|-------------|
+| `probeFrequency` | `60000` | Keep-alive probe interval in milliseconds (`0` disables probing) |
+| `noLights` | `false` | Hide all light controls |
+| `showHumidity` | `true` | Expose humidity sensor |
+| `showTemperature` | `true` | Expose temperature sensor |
+| `downlightEquipped` | auto | Override downlight detection (`true`/`false`) |
+| `uplightEquipped` | auto | Override uplight detection (`true`/`false`) |
+| `showFanOccupancySensor` | `false` | Expose fan occupancy sensor |
+| `showLightOccupancySensor` | `false` | Expose light occupancy sensor |
+| `showStandbyLED` | `false` | Expose night light / standby LED controls |
+| `enableIncrementalButtons` | `false` | Add +/- buttons for brightness and fan speed |
+| `incrementalButtonsDelay` | `500` | Auto-reset delay for incremental buttons (ms) |
+| `enableDebugPort` | `false` | Enable TCP debug port for runtime debug level changes |
 
-### **Other**
+### Migrating from homebridge-i6-bigassfans
 
-If you find you cannot change the fan icon in Apple's Home app and you are showing your fan with its lights and/or switches as a single tile, then show it as separate tiles.  That should unlock the icon so you can change it, then set it back to **Show as Single Tile** and the icon will be locked with your change in effect.
+1. **Uninstall the old plugin** and install this one.
+2. **Clear your Homebridge accessory cache** -- the switch from `Fan` to `Fanv2` service requires fresh accessories. (The plugin will attempt to remove the legacy `Fan` service automatically, but a cache clear ensures a clean state.)
+3. **Remove `showWhooshSwitch`** from your config -- Whoosh is now built into the fan tile as SwingMode.
+4. **`showFanAutoSwitch` is optional** -- Fan Auto is now built into the fan tile as TargetFanState. You can keep the legacy switch if you prefer a separate control.
+5. The `platform` value stays `"BigAssFans-i6"` -- no config change needed there.
 
-In some cases the Home app doesn't have the option to **Show as Separate Tiles** or **Show as Single Tile** in the Fan's settings, e.g. a Haiku H/I with no light and no optional switches being shown.  In this case the work-around is to add `"showTemperature": false` to your  config.json for the fan, restart, then change the icon, then remove the `"showTemperature"` line or change the setting to `true`, and restart.
+### Upgrading from the Original Plugin -- What Changes in HomeKit
 
-### **Troubleshooting**
+| Before (Fan service) | After (Fanv2 service) |
+|---|---|
+| On/Off toggle | Active (Inactive / Active) |
+| Separate Whoosh switch | SwingMode in fan tile |
+| Separate Fan Auto switch | TargetFanState (Manual / Auto) in fan tile |
+| No fan state feedback | CurrentFanState (Inactive / Idle / Blowing Air) |
+| Rotation Speed (%) | Rotation Speed (%) -- unchanged |
+| Rotation Direction | Rotation Direction -- unchanged |
 
-First, make sure you can control your fan from the official Big Ass Fans app.
+### Troubleshooting
 
-If you have any issues with the plugin, you can run Homebridge in debug mode, which will provide some additional information. This may be useful for investigating problems.
+1. **Make sure you can control your fan from the official Big Ass Fans app** before troubleshooting the plugin.
 
-Homebridge debug mode:
+2. **Run Homebridge in debug mode** for additional diagnostics:
+   ```sh
+   homebridge -D
+   ```
 
-```sh
-homebridge -D
-```
+3. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
 
-Check out the [Issues](https://github.com/oogje/homebridge-i6-bigAssFans/issues?q=) (open and closed) for something relevant to the problem your experiencing.
+4. **Check the [Issues](https://github.com/applemanj/homebridge2-bigAssFans/issues)** for known problems and solutions.
 
-Perhaps try running the most recent beta shown in the list of [npm versions](https://www.npmjs.com/package/homebridge-i6-bigassfans?activeTab=versions).  The [Release Notes](https://github.com/oogje/homebridge-i6-bigAssFans/blob/main/Release%20Notes.md) include tidbits about the betas.
+### Tips
 
+- If you cannot change the fan icon in Apple's Home app and the fan is shown as a single tile, switch to **Show as Separate Tiles**, change the icon, then switch back to **Show as Single Tile**.
+- If the Home app does not show the option to separate tiles (e.g., a Haiku with no light and no optional switches), temporarily add `"showTemperature": false` to your config, restart, change the icon, then remove the setting.
 
-## Special thanks
+### Acknowledgments
 
-[@bdraco](https://github.com/bdraco) for suggesting BAF is using protobufs and [@jfroy](https://github.com/jfroy) for building a working BAF controller using protobufs.
+This fork builds on the work of [@oogje](https://github.com/oogje) and the contributors to [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge-i6-bigAssFans).
 
-[@pponce](https://github.com/pponce), without whom there would be no Haiku implementation and a lot less testing, and for generally being an awesome collaborator and for the Haiku photo.
+Special thanks to:
+- [@bdraco](https://github.com/bdraco) for identifying the protobuf protocol
+- [@jfroy](https://github.com/jfroy) for building a working BAF protobuf controller
+- [@pponce](https://github.com/pponce) for Haiku implementation, testing, and collaboration
+- [@knmorgan](https://github.com/knmorgan) for bug reports and code contributions
+- [@aveach](https://github.com/aveach) and all users who reported issues and helped debug
+- [homebridge-miot](https://github.com/merdok/homebridge-miot) -- style guide
+- [HAP-NodeJS](https://github.com/KhaosT/HAP-NodeJS) & [Homebridge](https://github.com/homebridge/homebridge) -- for making this possible
+- [Big Ass Fans](https://www.bigassfans.com) -- for their awesome products
 
-All the users who reported issues and helped debug them, including [@aveach](https://github.com/aveach) who also made the es6 photo.  And users
-like [@knmorgan](https://github.com/knmorgan) who discovered a bug and contributed the code to fix it.
+### License
 
-[homebridge-miot](https://github.com/merdok/homebridge-miot) - whose style served as a guide.
-
-[Bruce Pennypacker](https://bruce.pennypacker.org/2015/07/17/hacking-bigass-fans-with-senseme/) - whose blog provided some clarity.
-
-[homebridge-bigAssFans](https://github.com/sean9keenan/homebridge-bigAssFans) - where the Haiku message protocol gave me some insight.
-
-[HAP-NodeJS](https://github.com/KhaosT/HAP-NodeJS) & [homebridge](https://github.com/nfarina/homebridge) - for making this possible.
-
-[Big Ass Fans](https://www.bigassfans.com) - for their awesome products many of which as of v3.3.1 natively support HomeKit!
+MIT

@@ -8,11 +8,6 @@ const MAXFANSPEED = 7;
 
 const ONEBYTEHEADER = [0x12, 0x07, 0x12, 0x05, 0x1a, 0x03];
 
-// const MODEL_I6 =       'i6';
-// const MODEL_ES6 =      'es6';
-// const MODEL_HAIKU_L =  'Haiku L Series';
-// const MODEL_HAIKU_HI = 'Haiku H/I Series';
-
 const TARGETLIGHT_BOTH = 0;
 const TARGETLIGHT_DOWN = 1;
 const TARGETLIGHT_UP = 2;
@@ -51,6 +46,13 @@ interface Capabilities {
   hasEcoMode : boolean;
 }
 
+/**
+ * Accessory handler for a single Big Ass Fans i6/es6/Haiku ceiling fan.
+ *
+ * Manages the TCP connection to the fan, registers HomeKit services and characteristics
+ * (Fanv2, Lightbulb, sensors, switches), and translates between HomeKit state and the
+ * fan's proprietary protobuf-over-SLIP protocol on port 31415.
+ */
 export class BigAssFans_i6PlatformAccessory {
   public capabilitiesEstablished = false;
   public capabilities: Capabilities = {
@@ -90,8 +92,6 @@ export class BigAssFans_i6PlatformAccessory {
   public fanSlowerService!: Service;
   public fanFasterService!: Service;
 
-  // public bothlightsBulbService!: Service;
-
   public downlightStates: lightStates = {
     On: false,
     Brightness: 1,  // percent
@@ -112,16 +112,7 @@ export class BigAssFans_i6PlatformAccessory {
     ColorTemperature: 2200, // Mireds!
     Hue: 60,                // angle
     Saturation: 100,        // percent
-    // homeShieldUp: false,  // used to prevent Home.app from turning light on at 100% when it's at zero percent.
   };
-
-  // public bothlightStates: lightStates  = {
-  //   On: false,
-  //   Brightness: 1,  // percent
-  //   ColorTemperature: 2200,
-  //   homeShieldUp: false,  // used to prevent Home.app from turning light on at 100% when it's at zero percent.
-  // };
-
 
   public fanStates = {
     Active: 0,           // 0=Inactive, 1=Active (Fanv2)
@@ -156,7 +147,6 @@ export class BigAssFans_i6PlatformAccessory {
   public downlightEquipped = undefined;
   public uplightEquipped = undefined;
 
-  // public bothlightsControl = false;
   public enableIncrementalButtons = false;
   public incrementalButtonsDelay = 500;
 
@@ -192,7 +182,6 @@ export class BigAssFans_i6PlatformAccessory {
 
   public bulbCount = 0;
   public targetBulb = -1;
-  // public targetBulbDetermined = false
   public fanOnMeansAuto = undefined;
   public lightOnMeansAuto = undefined;
 
@@ -215,6 +204,7 @@ export class BigAssFans_i6PlatformAccessory {
   public lastRebootCount = 0;
   public showRebootReason = true;
 
+  /** Sets up config, debug levels, network connection, and HomeKit services for the fan. */
   constructor(
     public readonly platform: BigAssFans_i6Platform,
     public readonly accessory: PlatformAccessory,
@@ -329,10 +319,6 @@ export class BigAssFans_i6PlatformAccessory {
     if (accessory.context.device.showLightOccupancySensor) {
       this.showLightOccupancySensor = true;
     }
-
-    // if (accessory.context.device.bothlightsControl) {
-    //   this.bothlightsControl = true;
-    // }
 
     if (accessory.context.device.showStandbyLED) {
       this.showStandbyLED = true;
@@ -610,23 +596,6 @@ export class BigAssFans_i6PlatformAccessory {
     return colorTemperature;
   }
 
-  // async setUpColorTemperature(value: CharacteristicValue) {
-  //   // should maybe limit color temp to one of 5 BAF supported values - 2200, 2700, 4000, 5000, 6500?
-  //   this.uplightStates.ColorTemperature = Math.round(1000000/(value as number));
-  //   debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Up ColorTemperature  -> ' + value +
-  //       ' (' + this.uplightStates.ColorTemperature + ')');
-  //   const stuffedVarInt = stuff(varint_encode(this.uplightStates.ColorTemperature));
-  //   const firstPart = [0x12, stuffedVarInt.length + 6, 0x12, stuffedVarInt.length + 4, 0x1a, stuffedVarInt.length + 2, 0xb8, 0x04];
-  //   clientWrite(this.client, firstPart.concat(stuffedVarInt), this);
-  // }
-
-  // async getUpColorTemperature(): Promise<CharacteristicValue> {
-  //   const colorTemperature = Math.round(1000000 / this.uplightStates.ColorTemperature);
-  //   debugLog(this, ['light', 'characteristics'], [1, 4], 'Get Characteristic Up ColorTemperature -> ' + colorTemperature +
-  //       ' (' + this.uplightStates.ColorTemperature + ')');
-  //   return colorTemperature;
-  // }
-
   async setSwingMode(value: CharacteristicValue) {
     debugLog(this, 'characteristics', 3, 'Set Characteristic SwingMode (Whoosh) -> ' + value);
     this.whooshSwitchOn = (value as number) === 1;
@@ -743,18 +712,8 @@ export class BigAssFans_i6PlatformAccessory {
   async setStandbyLEDEnabledSwitchOnState(value: CharacteristicValue) {
     debugLog(this, ['newcode', 'characteristics'], [1, 3], 'Set Characteristic StandbyLED Enabled Switch On -> ' + value);
     this.standbyLEDEnabledSwitchOn = value as boolean;
-    // clientWrite(this.client,
-    //  [0x0c, 0x12, 0x0d, 0x12, 0x0b, 0x1a, 0x09, 0x9a, 0x05, 0x06, 0x08, 0x09, 0x10, 0x01, 0x18, 0x30, 0x0c], this);
     clientWrite(this.client,
       [0x0c, 0x12, 0x09, 0x12, 0x07, 0x1a, 0x05, 0x9a, 0x05, 0x02, 0x10, this.standbyLEDEnabledSwitchOn, 0x0c], this);
-
-    // if (this.standbyLEDEnabledSwitchOn) {
-    //   debugLog(this, 'newcode', 1, 'setStandbyLEDEnabledSwitchOnState: call makeStandbyLED');
-    //   makeStandbyLED(this);
-    // } else {
-    //   debugLog(this, 'newcode', 1, `setStandbyLEDEnabledSwitchOnState: call zapService(this, 'standbyLED'`);
-    //   zapService(this, 'standbyLED');
-    // }
   }
 
   async getStandbyLEDEnabledSwitchOnState(): Promise<CharacteristicValue> {
@@ -946,10 +905,6 @@ function makeStandbyLED(pA: BAF) {
     .onSet(pA.setStandbyLEDBrightness.bind(pA))
     .onGet(pA.getStandbyLEDBrightness.bind(pA));
 
-  // pA.standbyLEDBulbService.getCharacteristic(pA.platform.Characteristic.ColorTemperature)
-  //   .onSet(pA.setStandbyLEDColorTemperature.bind(pA))
-  //   .onGet(pA.getStandbyLEDColorTemperature.bind(pA));
-
   pA.standbyLEDBulbService.getCharacteristic(pA.platform.Characteristic.Hue)
     .onSet(pA.setStandbyLEDHue.bind(pA))
     .onGet(pA.getStandbyLEDHue.bind(pA));
@@ -959,11 +914,17 @@ function makeStandbyLED(pA: BAF) {
     .onGet(pA.getStandbyLEDSaturation.bind(pA));
 }
 
+/**
+ * Registers all HomeKit services and characteristics for this fan accessory.
+ *
+ * Creates the Fanv2 service (with Active, CurrentFanState, TargetFanState, SwingMode,
+ * RotationSpeed, RotationDirection), light services, sensor services, and optional
+ * switches based on the user's config and the fan's detected capabilities.
+ * Removes any stale legacy services (Fan v1, whoosh switch) from cached accessories.
+ */
 function makeServices(pA: BAF) {
   const capitalizeName = pA.Name[0] === pA.Name[0].toUpperCase();
   let accessoryName:string;
-
-  // debugLog(pA, 'newcode', 1, `pA.name: '${pA.Name}'`);
 
   pA.accessory.getService(pA.platform.Service.AccessoryInformation)!
     .setCharacteristic(pA.platform.Characteristic.Manufacturer, 'Big Ass Fans')
@@ -1233,17 +1194,8 @@ function makeServices(pA: BAF) {
       pA.platform.log.info(`'"showEcoModeSwitch": true' in config.json but this fan (${pA.Name}) does not support Eco Mode`);
     }
   } else {
-    // const service = pA.accessory.getService('ecoModeSwitch');
-    // if (service) {
-    //   pA.accessory.removeService(service);
-    // }
     zapService(pA, 'ecoModeSwitch');
   }
-
-  // looks like maybe the service name is the default name
-  // let s = pA.accessory.getService('testSwitch') ||
-  //   pA.accessory.addService(pA.platform.Service.Switch, 'testSwitch', 'switch-8');
-  // zapService(pA, 'testSwitch');
 
   // standbyLED
   if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
@@ -1312,6 +1264,7 @@ function makeServices(pA: BAF) {
   debugLog(pA, 'progress', 1, 'leaving makeServices');
 }
 
+/** Removes a named service from the accessory cache if present (used for legacy service cleanup). */
 function zapService(pA:BAF, serviceName: string) {
   const service = pA.accessory.getService(serviceName);
   if (service) {
@@ -1494,10 +1447,12 @@ function backOff(errorMsgString: string, retryCount: number) : number {
 }
 
 /**
-*  separate the data into chunks as required and feed them, unstuffed, to preChunk (if needed) and doChunk() one at a time.
-*/
-
-
+ * Handles incoming TCP data from the fan.
+ *
+ * Splits the raw byte stream on SLIP 0xC0 delimiters into individual frames,
+ * unstuffs escaped bytes, reassembles fragmented chunks, and passes each
+ * complete protobuf message to buildFunStack() for decoding and dispatch.
+ */
 function onData(pA: BAF, data: Buffer) {
   debugLog(pA, 'network', 8, `accessory client got: ${data.length} ${(data.length === 1 ? ' byte' : ' bytes')}`);
   debugLog(pA, 'network', 13, `raw (stuffed) data:  ${hexFormat(data)}`);
@@ -1517,7 +1472,6 @@ function onData(pA: BAF, data: Buffer) {
       debugLog(pA, 'network', 14, `pA.chunkFragment ${hexFormat(pA.chunkFragment)}`);
       debugLog(pA, 'network', 14, `data.subarray(0, ${startIndex}) ${hexFormat(data.subarray(0, startIndex))}`);
       debugLog(pA, 'network', 9, `built chunk from fragments ${hexFormat(chunks[numChunks])}`);
-      // debugLog(pA, 'newcode', 1, 'built chunk from fragments');
       numChunks++;
     }
   }
@@ -1597,25 +1551,12 @@ function sortFunction(a, b) {
   }
 }
 
-// As of iOS/iPadOS 16, Home app uses ConfiguredName if present, else the generic accessory name (i.e. Light)
-// https://discord.com/channels/432663330281226270/432672072859385856/1040394094528188416
-// function setName(pA: BAF, service: Service, name: string) {
-//   service.setCharacteristic(pA.platform.Characteristic.Name, name);
-
-//   if (!service.testCharacteristic(pA.platform.Characteristic.ConfiguredName)) {
-//     service.addCharacteristic(pA.platform.Characteristic.ConfiguredName);
-//   }
-//   service.setCharacteristic(pA.platform.Characteristic.ConfiguredName, name);
-// }
+// Sets both Name and ConfiguredName (required since iOS/iPadOS 16).
 function setName(pA: BAF, service: Service, name: string) {
-  // debugLog(pA, 'newcode', 1, `setName(pA, service, '${name}'`);
-
   service.setCharacteristic(pA.platform.Characteristic.Name, name);
 
   if (!service.testCharacteristic(pA.platform.Characteristic.ConfiguredName)) {
-    // debugLog(pA, 'newcode', 1, '  service.addCharacteristic(platform.Characteristic.ConfiguredName)');
     service.addCharacteristic(pA.platform.Characteristic.ConfiguredName);
-    // debugLog(pA, 'newcode', 1, `  service.setCharacteristic(platform.Characteristic.ConfiguredName, ${name})`);
     service.setCharacteristic(pA.platform.Characteristic.ConfiguredName, name);
   }
 }
@@ -2030,7 +1971,6 @@ function standbyColorPreset(s: string, pA:BAF) {
     if (pA.standbyLEDBulbService) {
       pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Hue, hue);
       pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Saturation, saturation);
-      // pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Brightness, value);
     }
   }
 }
@@ -2113,6 +2053,7 @@ const START_STUFF = 0xDC;
 // 0xdb, 0xdc -> 0xc0
 // 0xdb, 0xdd -> 0xdb
 
+/** Reverses SLIP byte stuffing: 0xDB 0xDC -> 0xC0, 0xDB 0xDD -> 0xDB. */
 function unstuff(data: Buffer): Buffer {
   const unstuffedData: number[] = [];
   let dataIndex = 0;
@@ -2131,6 +2072,7 @@ function unstuff(data: Buffer): Buffer {
   return Buffer.from(unstuffedData);
 }
 
+/** Applies SLIP byte stuffing: 0xC0 -> 0xDB 0xDC, 0xDB -> 0xDB 0xDD. */
 function stuff(inArray: number[]) : number[] {
   const outArray:number[] = [];
   let outIndex = 0;
@@ -2148,7 +2090,7 @@ function stuff(inArray: number[]) : number[] {
   return outArray;
 }
 
-// https://github.com/sorribas/varint.c
+/** Encodes a number as a protobuf varint (variable-length integer). */
 function varint_encode(n: number) : number[] {
   const a : number[] = [];
 
@@ -2215,6 +2157,7 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   }
 }
 
+/** SLIP-frames and sends a protobuf message to the fan over TCP. */
 function clientWrite(client, b, pA:BAF) {
   debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${b.toString('hex')}`);
   const stuffedBuffer = stuff(b);
@@ -2227,6 +2170,7 @@ function clientWrite(client, b, pA:BAF) {
   }
 }
 
+/** Decodes a protobuf varint from the start of the buffer. Returns [remaining buffer, decoded value]. */
 function getVarint(b: Buffer): [Buffer, number] {
   let r = 0;
   const a: number[] = [];
@@ -2247,6 +2191,7 @@ function getVarint(b: Buffer): [Buffer, number] {
   return [b.subarray(a.length), r];
 }
 
+/** Extracts the wire type and field number from a protobuf key varint. Returns [remaining buffer, type, field]. */
 function getProtoElements(b: Buffer): [Buffer, number, number] {
   // key is a varint
   let key = 0;
@@ -2290,6 +2235,14 @@ const rebootReasons = [
   'Lockup',
   'Pin',
 ];
+/**
+ * Decodes a protobuf message buffer into a stack of handler function calls.
+ *
+ * Walks the nested protobuf field structure, matching known field paths to their
+ * corresponding HomeKit characteristic update functions (e.g., fanOnState,
+ * lightBrightness, whooshOnState). Returns an array of {fun, value} pairs
+ * to be executed by the caller.
+ */
 function buildFunStack(b:Buffer, pA: BAF): funCall[] {
   let type: number;
   let field: number;
@@ -3230,8 +3183,6 @@ function logCapabilities(pA:BigAssFans_i6PlatformAccessory) {
     debugLog(pA, 'capabilities', 1, 'no eco mode');
   }
 }
-// const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 function doUnknownField(b: Buffer, type: number, pA: BAF) {
   if (type === 0) {
     let value: number;
