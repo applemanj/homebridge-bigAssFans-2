@@ -9,8 +9,9 @@ import { BigAssFans_i6PlatformAccessory } from './platformAccessory';
  * parse the user config and discover/register accessories with Homebridge.
  */
 export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
+  // Assigned in constructor after api is initialized (TypeScript 5 requires this pattern)
+  public readonly Service: typeof Service;
+  public readonly Characteristic: typeof Characteristic;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
@@ -22,6 +23,8 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
+    this.Service = this.api.hap.Service;
+    this.Characteristic = this.api.hap.Characteristic;
     this.log.debug('Finished initializing platform');
 
     // When this event is fired it means Homebridge has restored all cached accessories from disk.

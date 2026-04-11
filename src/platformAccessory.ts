@@ -1,12 +1,11 @@
 /* eslint-disable no-multi-spaces */
 
-import { Service, PlatformAccessory, CharacteristicValue, Logger } from 'homebridge';
+import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { BigAssFans_i6Platform } from './platform';
 
 // https://stackoverflow.com/questions/38875401/getting-error-ts2304-cannot-find-name-buffer
 declare const Buffer; // this seems to ward off typescripts whining about buffer methods such as length, etc.
 
-let hbLog: Logger;
 
 const MAXFANSPEED = 7;
 
@@ -204,11 +203,13 @@ export class BigAssFans_i6PlatformAccessory {
 
   mysteryProperties: string|number[] = [];  // to keep track of when they change - for hints to eventually figure out what they mean
 
+  public chunkFragment: Buffer = Buffer.alloc(0);
+  public funQueue: funCall[] = [];
+
   constructor(
     public readonly platform: BigAssFans_i6Platform,
     public readonly accessory: PlatformAccessory,
   ) {
-    hbLog = platform.log;
     this.IP = accessory.context.device.ip;
     this.MAC = accessory.context.device.mac;
     this.Name = accessory.context.device.name;
@@ -250,7 +251,7 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.whoosh) {
-      hbLog.warn(`${this.Name} - use of "whoosh" configuration attribute is deprecated, please use "showWhooshSwitch" instead`);
+      this.platform.log.warn(`${this.Name} - use of "whoosh" configuration attribute is deprecated, please use "showWhooshSwitch" instead`);
       this.showWhooshSwitch = true;
     }
     if (accessory.context.device.showWhooshSwitch) {
@@ -258,7 +259,7 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.dimToWarm) {
-      hbLog.warn(`${this.Name} - use of "dimToWarm" configuration attribute is deprecated, please use "showDimToWarmSwitch" instead`);
+      this.platform.log.warn(`${this.Name} - use of "dimToWarm" configuration attribute is deprecated, please use "showDimToWarmSwitch" instead`);
       this.showDimToWarmSwitch = true;
     }
     if (accessory.context.device.showDimToWarmSwitch) {
@@ -266,7 +267,7 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.fanAuto) {
-      hbLog.warn(`${this.Name} - use of "fanAuto" configuration attribute is deprecated, please use "showFanAutoSwitch" instead`);
+      this.platform.log.warn(`${this.Name} - use of "fanAuto" configuration attribute is deprecated, please use "showFanAutoSwitch" instead`);
       this.showFanAutoSwitch = true;
     }
     if (accessory.context.device.showFanAutoSwitch) {
@@ -274,7 +275,7 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.lightAuto) {
-      hbLog.warn(`${this.Name} - use of "lightAuto" configuration attribute is deprecated, please use "showLightAutoSwitch" instead`);
+      this.platform.log.warn(`${this.Name} - use of "lightAuto" configuration attribute is deprecated, please use "showLightAutoSwitch" instead`);
       this.showLightAutoSwitch = true;
     }
     if (accessory.context.device.showLightAutoSwitch) {
@@ -282,7 +283,7 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.ecoMode) {
-      hbLog.warn(`${this.Name} - use of "ecoMode" configuration attribute is deprecated, please use "showEcoModeSwitch" instead`);
+      this.platform.log.warn(`${this.Name} - use of "ecoMode" configuration attribute is deprecated, please use "showEcoModeSwitch" instead`);
       this.showEcoModeSwitch = true;
     }
     if (accessory.context.device.showEcoModeSwitch) {
@@ -521,7 +522,7 @@ export class BigAssFans_i6PlatformAccessory {
       debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
       this.fanStates.RotationSpeed = Math.round(((value as number) / 100) * MAXFANSPEED);
       if (this.fanStates.RotationSpeed > MAXFANSPEED) {
-        hbLog.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': ' + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
+        this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': ' + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
         this.fanStates.RotationSpeed = MAXFANSPEED;
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
@@ -1028,17 +1029,17 @@ function makeServices(pA: BAF) {
     }
   } else {
     if (pA.showFanOccupancySensor) {
-      hbLog.info('\'"showFanOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
+      pA.platform.log.info('\'"showFanOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
     }
     if (pA.showLightOccupancySensor) {
-      hbLog.info('\'"showLightOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
+      pA.platform.log.info('\'"showLightOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
     }
   }
 
   // downlight
   if (pA.capabilities.hasLight) {
     if (pA.noLights) {
-      hbLog.info(`${pA.Name} downlight disabled by configuration '"noLights": true'`);
+      pA.platform.log.info(`${pA.Name} downlight disabled by configuration '"noLights": true'`);
       zapService(pA, 'downlight');
     } else {
       pA.downlightBulbService = pA.accessory.getService(pA.platform.Service.Lightbulb) ||
@@ -1069,7 +1070,7 @@ function makeServices(pA: BAF) {
   // uplight
   if (pA.capabilities.hasUplight) {
     if (pA.noLights) {
-      hbLog.info(`${pA.Name} uplight disabled by configuration '"noLights": true'`);
+      pA.platform.log.info(`${pA.Name} uplight disabled by configuration '"noLights": true'`);
       zapService(pA, 'uplight');
     } else {
       pA.uplightBulbService = pA.accessory.getService('uplight') ||
@@ -1092,7 +1093,7 @@ function makeServices(pA: BAF) {
 
   if (pA.capabilities.hasUVCLight) {
     if (pA.noLights) {
-      hbLog.info(`${pA.Name} UVC light disabled by configuration '"noLights": true'`);
+      pA.platform.log.info(`${pA.Name} UVC light disabled by configuration '"noLights": true'`);
     } else {
       if (pA.UVCSwitchService === undefined) {
         pA.UVCSwitchService = pA.accessory.getService('UVCSwitch') ||
@@ -1178,7 +1179,7 @@ function makeServices(pA: BAF) {
         .onSet(pA.setEcoModeSwitchOnState.bind(pA))
         .onGet(pA.getEcoModeSwitchOnState.bind(pA));
     } else {
-      hbLog.info(`'"showEcoModeSwitch": true' in config.json but this fan (${pA.Name}) does not support Eco Mode`);
+      pA.platform.log.info(`'"showEcoModeSwitch": true' in config.json but this fan (${pA.Name}) does not support Eco Mode`);
     }
   } else {
     // const service = pA.accessory.getService('ecoModeSwitch');
@@ -1310,7 +1311,7 @@ function networkSetup(pA: BAF) {
     retrySeconds = backOff(err.code, retryCount);
     switch (err.code) {
       case 'ECONNREFUSED':
-        hbLog.error(`${pA.Name} (${pA.IP}) connection refused ${err.code}.  Check that the correct IP is in config.json.`);
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection refused ${err.code}.  Check that the correct IP is in config.json.`);
         // why clearInterval here but not in the other case that returns
         if (pA.probeTimeout !== undefined) {
           clearInterval(pA.probeTimeout);
@@ -1318,18 +1319,18 @@ function networkSetup(pA: BAF) {
         return;
       case 'ENETUNREACH':
         // hbLog.error(pA.Name + ' (' + pA.IP + ')' + ` is unreachable [${err.code}].  Check the correct IP is in config.json.`);
-        hbLog.error(`${pA.Name} (${pA.IP}) is unreachable [${err.code}].\n` +
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) is unreachable [${err.code}].\n` +
           `Check the correct IP in config.json. Will retry in ${retrySeconds} seconds.`);
         break;
         // return;
 
       case 'ETIMEDOUT':
-        hbLog.error(`${pA.Name} (${pA.IP}) connection timed out [${err.code}].\n` +
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection timed out [${err.code}].\n` +
           `Check your fan has power and the correct IP in config.json. Will retry in ${retrySeconds} seconds.`);
         break;
       case 'EHOSTDOWN': {
         const minutes = Math.round(retrySeconds / 60);
-        hbLog.error(pA.Name + ' (' + pA.IP + ')' + ` connection problem [${err.code}].` +
+        pA.platform.log.error(pA.Name + ' (' + pA.IP + ')' + ` connection problem [${err.code}].` +
           `Attempting reconnect in ${minutes} ${minutes === 1 ? 'minute.' : 'minutes.'}`);
         break;
       }
@@ -1340,14 +1341,14 @@ function networkSetup(pA: BAF) {
         debugLog(pA, 'reconnect', 1, `uptime: ${toDaysHoursMinutesString(pA.uptimeMinutes)}`);
         break;
       case 'EPIPE':
-        hbLog.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
         break;
       case 'ENOTFOUND':
-        hbLog.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
         break;
 
       default:
-        hbLog.warn(`${pA.Name} (${pA.IP}) Unhandled network error: [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) Unhandled network error: [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
         break;
     }
 
@@ -1360,7 +1361,7 @@ function networkSetup(pA: BAF) {
       pA.client = net.connect(connectOptions, () => {
         retryCount = 0;
         if (err.code !== 'ECONNRESET') { // ECONNRESETs seem pretty normal and regular
-          hbLog.info(pA.Name + ' reconnected!');
+          pA.platform.log.info(pA.Name + ' reconnected!');
         }
         debugLog(pA, ['network', 'reconnect'], [1, 1], `reconnected after [${err.code}]`);
       });
@@ -1380,9 +1381,9 @@ function networkSetup(pA: BAF) {
   // listen for debugLevel changes
   if (pA.enableDebugPort) {
     const srv = net.createServer((c) => {
-      hbLog.info(`${pA.Name} - debug client connected`);
+      pA.platform.log.info(`${pA.Name} - debug client connected`);
       c.on('end', () => {
-        hbLog.info(`${pA.Name} - debug client disconnected`);
+        pA.platform.log.info(`${pA.Name} - debug client disconnected`);
       });
       c.write(`${pA.Name}\n`);
 
@@ -1417,7 +1418,7 @@ function networkSetup(pA: BAF) {
 
     srv.listen(0, () => {
       const info = srv.address() as net.AddressInfo;
-      hbLog.info(`${pA.Name} - plugin listening for debugging commands on port: ${info.port}`);
+      pA.platform.log.info(`${pA.Name} - plugin listening for debugging commands on port: ${info.port}`);
     });
   }
 }
@@ -1452,8 +1453,6 @@ function backOff(errorMsgString: string, retryCount: number) : number {
 *  separate the data into chunks as required and feed them, unstuffed, to preChunk (if needed) and doChunk() one at a time.
 */
 
-let chunkFragment: Buffer = Buffer.alloc(0);
-let funQueue: funCall[] = [];
 
 function onData(pA: BAF, data: Buffer) {
   debugLog(pA, 'network', 8, `accessory client got: ${data.length} ${(data.length === 1 ? ' byte' : ' bytes')}`);
@@ -1466,12 +1465,12 @@ function onData(pA: BAF, data: Buffer) {
   if (data[0] !== 0xc0 || (data[0] === 0xc0 && data[1] === 0xc0)) {
     // must be remaining fragment from last message
     startIndex = data.indexOf(0xc0) + 1;  // should be a starting 0xc0 here
-    if (chunkFragment.length <= 0) {
+    if (pA.chunkFragment.length <= 0) {
       debugLog(pA, 'redflags', 1, `dangling data fragment or empty message - ${startIndex} bytes ignored`);
     } else {
-      const arr = [chunkFragment, data.subarray(0, startIndex)]; // startIndex serves as length here
+      const arr = [pA.chunkFragment, data.subarray(0, startIndex)]; // startIndex serves as length here
       chunks[numChunks] = Buffer.concat(arr);
-      debugLog(pA, 'network', 14, `chunkFragment ${hexFormat(chunkFragment)}`);
+      debugLog(pA, 'network', 14, `pA.chunkFragment ${hexFormat(pA.chunkFragment)}`);
       debugLog(pA, 'network', 14, `data.subarray(0, ${startIndex}) ${hexFormat(data.subarray(0, startIndex))}`);
       debugLog(pA, 'network', 9, `built chunk from fragments ${hexFormat(chunks[numChunks])}`);
       // debugLog(pA, 'newcode', 1, 'built chunk from fragments');
@@ -1502,10 +1501,10 @@ function onData(pA: BAF, data: Buffer) {
   if (finalEndMarker < (data.length - 1)) {
     debugLog(pA, 'network', 9, 'stashed data fragment');
     debugLog(pA, 'network', 10, `finalEndMarker: ${finalEndMarker}`);
-    chunkFragment = data.subarray(finalEndMarker + 1);
-    debugLog(pA, 'network', 10, `chunkFragment ${hexFormat(chunkFragment)}`);
+    pA.chunkFragment = data.subarray(finalEndMarker + 1);
+    debugLog(pA, 'network', 10, `pA.chunkFragment ${hexFormat(pA.chunkFragment)}`);
   } else {
-    chunkFragment = Buffer.from([]);
+    pA.chunkFragment = Buffer.from([]);
   }
 
   for (let i = 0; i < numChunks; i++) {
@@ -1523,18 +1522,18 @@ function onData(pA: BAF, data: Buffer) {
       funStack.forEach((value) => {
         debugLog(pA, 'funstack', 1, `targetBulb === -1  ${value[0].name}(${value[1]})`);
       });
-      funQueue.push(...funStack);
+      pA.funQueue.push(...funStack);
     } else {
 
       debugLog(pA, 'funstack', (funStack.length === 0) ? 2 : 1, `funstack.length: ${funStack.length}`);
       debugLog(pA, 'funstack', 1, `pA.capabilitiesEstablished: ${pA.capabilitiesEstablished}`);
       if (pA.capabilitiesEstablished) {
-        funQueue.forEach((value) => {
-          debugLog(pA, 'funstack', 1, `funQueue.length:  ${funQueue.length})`);
-          debugLog(pA, 'funstack', 1, `funQueue:  ${value[0].name}(${value[1]})`);
+        pA.funQueue.forEach((value) => {
+          debugLog(pA, 'funstack', 1, `pA.funQueue.length:  ${pA.funQueue.length})`);
+          debugLog(pA, 'funstack', 1, `pA.funQueue:  ${value[0].name}(${value[1]})`);
           value[0](value[1], pA);
         });
-        funQueue = [];
+        pA.funQueue = [];
 
         funStack.forEach((value) => {
           debugLog(pA, 'funstack', 1, `  ${value[0].name}(${value[1]})`);
@@ -1839,7 +1838,7 @@ function currentTemperature(s: string, pA:BAF) {
     if (value === 1000) {
       infoLogOnce(pA, 'current temperature === 1000');
     } else {
-      hbLog.info(pA.Name + ' - current temperature out of range: ' + value + ', ignored');
+      pA.platform.log.info(pA.Name + ' - current temperature out of range: ' + value + ', ignored');
     }
     return;
   }
@@ -1867,7 +1866,7 @@ function currentRelativeHumidity(s: string, pA:BAF) {
       infoLogOnce(pA, 'current relative humidity === 1000');
       return;
     } else {
-      hbLog.info(pA.Name + ' - current relative humidity out of range: ' + value + ', ignored');
+      pA.platform.log.info(pA.Name + ' - current relative humidity out of range: ' + value + ', ignored');
     }
     return;
   }
@@ -2113,23 +2112,23 @@ let lastDebugMessageTag = 'lastDebugMessageTag initializer';
 function debugLog(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
   if (typeof(logTag) === 'string') {
     if (pA.debugLevels[logTag] === undefined) {
-      hbLog.warn('no such logging tag: "' + logTag + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
+      pA.platform.log.warn('no such logging tag: "' + logTag + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
     } else {
       if (pA.debugLevels[logTag] >= logLevel) {
-        hbLog.debug('dblog ' + logTag + '(' + logLevel + '/'  + pA.debugLevels[logTag] + ') ' + pA.Name + ' - ' +  logMessage);
+        pA.platform.log.debug('dblog ' + logTag + '(' + logLevel + '/'  + pA.debugLevels[logTag] + ') ' + pA.Name + ' - ' +  logMessage);
       }
     }
   } else {
     for (let i = 0; i < logTag.length; i++) {
       if (pA.debugLevels[logTag[i]] === undefined) {
-        hbLog.warn('no such logging tag: "' + logTag[i] + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
+        pA.platform.log.warn('no such logging tag: "' + logTag[i] + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
       } else {
         if (pA.debugLevels[logTag[i]] >= logLevel[i]) {
           if (lastDebugMessage === logMessage && lastDebugMessageTag !== logTag[i]) {
             // ignore it, it's redundant
             return;
           }
-          hbLog.debug('dblog ' + logTag[i] + '(' + logLevel[i] + '/' + pA.debugLevels[logTag[i]] + ') ' + pA.Name + ' - ' +  logMessage);
+          pA.platform.log.debug('dblog ' + logTag[i] + '(' + logLevel[i] + '/' + pA.debugLevels[logTag[i]] + ') ' + pA.Name + ' - ' +  logMessage);
           lastDebugMessage = logMessage;
           lastDebugMessageTag = logTag[i];
         }
@@ -2153,7 +2152,7 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   if (messagesLogged.includes(logMessage)) {
     return;
   } else {
-    hbLog.info(pA.Name + ' - ' + logMessage);
+    pA.platform.log.info(pA.Name + ' - ' + logMessage);
     messagesLogged.push(logMessage);
   }
 }
@@ -2166,7 +2165,7 @@ function clientWrite(client, b, pA:BAF) {
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
     client.write(buffer);
   } catch {
-    hbLog.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${b.toString('hex')}) failed`);
+    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${b.toString('hex')}) failed`);
   }
 }
 
