@@ -1,11 +1,8 @@
 /* eslint-disable no-multi-spaces */
 
+import * as net from 'net';
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { BigAssFans_i6Platform } from './platform';
-
-// https://stackoverflow.com/questions/38875401/getting-error-ts2304-cannot-find-name-buffer
-declare const Buffer; // this seems to ward off typescripts whining about buffer methods such as length, etc.
-
 
 const MAXFANSPEED = 7;
 
@@ -127,11 +124,12 @@ export class BigAssFans_i6PlatformAccessory {
 
 
   public fanStates = {
-    On: false,
+    Active: 0,           // 0=Inactive, 1=Active (Fanv2)
+    CurrentFanState: 0,  // 0=Inactive, 1=Idle, 2=BlowingAir (Fanv2)
+    TargetFanState: 0,   // 0=Manual, 1=Auto (Fanv2)
     RotationDirection: 1,
     RotationSpeed: 1,   // on scale from 1 to 7
     homeShieldUp: false,  // used to prevent Home.app from turning fan on at 100% when it's at zero percent.
-    // fanAutoHackInProgress: false,
   };
 
   public fanOccupancyDetected = false;
@@ -187,7 +185,7 @@ export class BigAssFans_i6PlatformAccessory {
   public rebootReason = 0;
 
   public debugLevel = 1;
-  public debugLevels:number[] = [];
+  public debugLevels: Record<string, number> = {};
 
   public CurrentTemperature = 0;
   public CurrentRelativeHumidity = 0;
@@ -201,10 +199,21 @@ export class BigAssFans_i6PlatformAccessory {
   public client;
   public oneByteHeaders:number[] = [];
 
-  mysteryProperties: string|number[] = [];  // to keep track of when they change - for hints to eventually figure out what they mean
+  // to keep track of when they change - for hints to eventually figure out what they mean
+  mysteryProperties: Record<string, string | number> = {};
 
   public chunkFragment: Buffer = Buffer.alloc(0);
   public funQueue: funCall[] = [];
+
+  // per-instance debug/state tracking (was incorrectly module-level)
+  public lastDebugMessage = '';
+  public lastDebugMessageTag = '';
+  public messagesLogged: string[] = [];
+  public debugLastFanOccupancyValue = 0;
+  public debugLastLightOccupancyValue = 0;
+  public uptimeLogged = false;
+  public lastRebootCount = 0;
+  public showRebootReason = true;
 
   constructor(
     public readonly platform: BigAssFans_i6Platform,
@@ -235,7 +244,7 @@ export class BigAssFans_i6PlatformAccessory {
     if (this.accessory.context.device.debugLevels !== undefined) {
       for (const debugEntry of this.accessory.context.device.debugLevels) {
         const entry:(string | number)[] = debugEntry as (string | number)[];
-        this.debugLevels[entry[0]] = entry[1];
+        this.debugLevels[String(entry[0])] = Number(entry[1]);
       }
     }
 
@@ -259,31 +268,35 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     if (accessory.context.device.dimToWarm) {
-      this.platform.log.warn(`${this.Name} - use of "dimToWarm" configuration attribute is deprecated, please use "showDimToWarmSwitch" instead`);
+      this.platform.log.warn(
+        `${this.Name} - "dimToWarm" is deprecated, use "showDimToWarmSwitch"`);
       this.showDimToWarmSwitch = true;
     }
     if (accessory.context.device.showDimToWarmSwitch) {
-      this.showDimToWarmSwitch = true; // defaults to false in property initialization
+      this.showDimToWarmSwitch = true;
     }
 
     if (accessory.context.device.fanAuto) {
-      this.platform.log.warn(`${this.Name} - use of "fanAuto" configuration attribute is deprecated, please use "showFanAutoSwitch" instead`);
+      this.platform.log.warn(
+        `${this.Name} - "fanAuto" is deprecated, use "showFanAutoSwitch"`);
       this.showFanAutoSwitch = true;
     }
     if (accessory.context.device.showFanAutoSwitch) {
-      this.showFanAutoSwitch = true; // defaults to false in property initialization
+      this.showFanAutoSwitch = true;
     }
 
     if (accessory.context.device.lightAuto) {
-      this.platform.log.warn(`${this.Name} - use of "lightAuto" configuration attribute is deprecated, please use "showLightAutoSwitch" instead`);
+      this.platform.log.warn(
+        `${this.Name} - "lightAuto" is deprecated, use "showLightAutoSwitch"`);
       this.showLightAutoSwitch = true;
     }
     if (accessory.context.device.showLightAutoSwitch) {
-      this.showLightAutoSwitch = true; // defaults to false in property initialization
+      this.showLightAutoSwitch = true;
     }
 
     if (accessory.context.device.ecoMode) {
-      this.platform.log.warn(`${this.Name} - use of "ecoMode" configuration attribute is deprecated, please use "showEcoModeSwitch" instead`);
+      this.platform.log.warn(
+        `${this.Name} - "ecoMode" is deprecated, use "showEcoModeSwitch"`);
       this.showEcoModeSwitch = true;
     }
     if (accessory.context.device.showEcoModeSwitch) {
@@ -484,24 +497,45 @@ export class BigAssFans_i6PlatformAccessory {
     return humidity;
   }
 
-  async setFanOnState(value: CharacteristicValue) {
-    debugLog(this, 'characteristics', 3, 'Set Characteristic Fan On -> ' + value);
-    this.fanStates.On = value as boolean;
+  async setFanActive(value: CharacteristicValue) {
+    debugLog(this, 'characteristics', 3, 'Set Characteristic Fan Active -> ' + value);
+    this.fanStates.Active = value as number;
 
-    // If the fan is in Auto mode and on command in response to this Set from HomeKit,
+    // If the fan is in Auto mode and Active=1 in response to this Set from HomeKit,
     // then it's going to reply with FanOn 0x01 which will cause us to drop it out of auto because it's not 0x02.
-    // If homekit is telling us to setFanOnState On while it's in Auto Mode, it must be because we changed the speed so,
-    // ignore this setFanOnState request.
-    if (this.fanAutoSwitchOn && this.fanStates.On) {
+    // If homekit is telling us Active while it's in Auto Mode, it must be because we changed the speed so,
+    // ignore this request.
+    if (this.fanStates.TargetFanState === 1 && this.fanStates.Active === 1) {
       return;
     }
-    clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, (this.fanStates.On ? 0x01 : 0x00)]), this);
+    clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]), this);
   }
 
-  async getFanOnState(): Promise<CharacteristicValue> {
-    const isOn = this.fanStates.On;
-    debugLog(this, 'characteristics', 3, 'Get Characteristic Fan On -> ' + isOn);
-    return isOn;
+  async getFanActive(): Promise<CharacteristicValue> {
+    debugLog(this, 'characteristics', 3, 'Get Characteristic Fan Active -> ' + this.fanStates.Active);
+    return this.fanStates.Active;
+  }
+
+  async getCurrentFanState(): Promise<CharacteristicValue> {
+    debugLog(this, 'characteristics', 4, 'Get Characteristic CurrentFanState -> ' + this.fanStates.CurrentFanState);
+    return this.fanStates.CurrentFanState;
+  }
+
+  async setTargetFanState(value: CharacteristicValue) {
+    debugLog(this, 'characteristics', 3, 'Set Characteristic TargetFanState -> ' + value);
+    this.fanStates.TargetFanState = value as number;
+    if (this.fanStates.TargetFanState === 1) {
+      // Auto mode
+      clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, 0x02]), this);
+    } else {
+      // Manual mode - send current active state
+      clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]), this);
+    }
+  }
+
+  async getTargetFanState(): Promise<CharacteristicValue> {
+    debugLog(this, 'characteristics', 3, 'Get Characteristic TargetFanState -> ' + this.fanStates.TargetFanState);
+    return this.fanStates.TargetFanState;
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
@@ -522,7 +556,8 @@ export class BigAssFans_i6PlatformAccessory {
       debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
       this.fanStates.RotationSpeed = Math.round(((value as number) / 100) * MAXFANSPEED);
       if (this.fanStates.RotationSpeed > MAXFANSPEED) {
-        this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': ' + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
+        this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': '
+          + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
         this.fanStates.RotationSpeed = MAXFANSPEED;
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
@@ -592,7 +627,18 @@ export class BigAssFans_i6PlatformAccessory {
   //   return colorTemperature;
   // }
 
-  // set/get won't get called unless showWhooshSwitch is true
+  async setSwingMode(value: CharacteristicValue) {
+    debugLog(this, 'characteristics', 3, 'Set Characteristic SwingMode (Whoosh) -> ' + value);
+    this.whooshSwitchOn = (value as number) === 1;
+    clientWrite(this.client, ONEBYTEHEADER.concat([0xd0, 0x03, (this.whooshSwitchOn ? 0x01 : 0x00)]), this);
+  }
+
+  async getSwingMode(): Promise<CharacteristicValue> {
+    debugLog(this, 'characteristics', 4, 'Get Characteristic SwingMode (Whoosh) -> ' + (this.whooshSwitchOn ? 1 : 0));
+    return this.whooshSwitchOn ? 1 : 0;
+  }
+
+  // Legacy switch support for whoosh (if user still wants separate switch)
   async setWhooshSwitchOnState(value: CharacteristicValue) {
     debugLog(this, 'characteristics', 3, 'Set Characteristic Whoosh Switch On -> ' + value);
     this.whooshSwitchOn = value as boolean;
@@ -618,7 +664,7 @@ export class BigAssFans_i6PlatformAccessory {
     return isOn;
   }
 
-  // set/get won't be called unless showFanAutoSwitch is true
+  // set/get won't be called unless showFanAutoSwitch is true (legacy switch support)
   async setFanAutoSwitchOnState(value: CharacteristicValue) {
     debugLog(this, 'characteristics', 3, 'Set Characteristic Fan Auto Switch On -> ' + value);
     this.fanAutoSwitchOn = value as boolean;
@@ -626,7 +672,7 @@ export class BigAssFans_i6PlatformAccessory {
       clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, 0x02]), this);
     } else {
       // in order for fan to turn auto off, we need to tell it to be on or off
-      this.setFanOnState(this.fanStates.On);
+      this.setFanActive(this.fanStates.Active);
     }
   }
 
@@ -843,16 +889,16 @@ export class BigAssFans_i6PlatformAccessory {
     }
 
     let b = this.fanStates.RotationSpeed;
-    if (b <= 1 && this.fanStates.On === false) {
+    if (b <= 1 && this.fanStates.Active === 0) {
       return;
     }
-    if (this.fanStates.On) {
+    if (this.fanStates.Active === 1) {
       b = b - 1;
     }
     debugLog(this, 'newcode', 1, `setFanSlowerServiceOnState, b: ${b}`);
     if (b <= 0) {
       fanOnState(String(0), this);
-      this.setFanOnState(false);
+      this.setFanActive(0);
     } else {
       this.setRotationSpeed(Math.round((b / MAXFANSPEED) * 100));
       fanRotationSpeed(String(b), this);
@@ -871,8 +917,8 @@ export class BigAssFans_i6PlatformAccessory {
 
     let b = this.fanStates.RotationSpeed;
     debugLog(this, 'newcode', 1, `setFanFasterServiceOnState, b: ${b}`);
-    debugLog(this, 'newcode', 1, `setFanFasterServiceOnState, this.fanStates.On: ${this.fanStates.On}`);
-    b = b + (this.fanStates.On ? 1 : 0);
+    debugLog(this, 'newcode', 1, `setFanFasterServiceOnState, this.fanStates.Active: ${this.fanStates.Active}`);
+    b = b + (this.fanStates.Active === 1 ? 1 : 0);
     if (b > 7) {
       b = 7;
     }
@@ -923,52 +969,55 @@ function makeServices(pA: BAF) {
     .setCharacteristic(pA.platform.Characteristic.Manufacturer, 'Big Ass Fans')
     .setCharacteristic(pA.platform.Characteristic.SerialNumber, pA.MAC);
 
-  // fan
+  // fan - using Fanv2 for Homebridge 2.0 (supports native Auto/Swing/Active)
   if (pA.capabilities.hasFan) {
-    pA.fanService = pA.accessory.getService(pA.platform.Service.Fan) ||
-      pA.accessory.addService(pA.platform.Service.Fan);
-    // pA.fanService.setCharacteristic(pA.platform.Characteristic.Name, pA.Name);
+    // Remove legacy Fan service if cached from older plugin version
+    const legacyFanService = pA.accessory.getService(pA.platform.Service.Fan);
+    if (legacyFanService) {
+      pA.accessory.removeService(legacyFanService);
+    }
+
+    pA.fanService = pA.accessory.getService(pA.platform.Service.Fanv2) ||
+      pA.accessory.addService(pA.platform.Service.Fanv2);
     setName(pA, pA.fanService, pA.Name);
 
-    pA.fanService.getCharacteristic(pA.platform.Characteristic.On)
-      .onSet(pA.setFanOnState.bind(pA))
-      .onGet(pA.getFanOnState.bind(pA));
+    pA.fanService.getCharacteristic(pA.platform.Characteristic.Active)
+      .onSet(pA.setFanActive.bind(pA))
+      .onGet(pA.getFanActive.bind(pA));
+
+    pA.fanService.getCharacteristic(pA.platform.Characteristic.CurrentFanState)
+      .onGet(pA.getCurrentFanState.bind(pA));
+
+    // TargetFanState: 0=Manual, 1=Auto - replaces the separate fan auto switch
+    pA.fanService.getCharacteristic(pA.platform.Characteristic.TargetFanState)
+      .onSet(pA.setTargetFanState.bind(pA))
+      .onGet(pA.getTargetFanState.bind(pA));
 
     pA.fanService.getCharacteristic(pA.platform.Characteristic.RotationSpeed)
       .onSet(pA.setRotationSpeed.bind(pA))
       .onGet(pA.getRotationSpeed.bind(pA));
 
-    if (pA.disableDirectionControl) {
-      // Am commenting out pA 'removeCharacteristic' line because it doesn't remove the control anyway.
-      // It's just as well since fanRotationDirection() lets the user know if the direction changes via remote or BAF app.
-      // pA.fanService.removeCharacteristic(pA.fanService.getCharacteristic(pA.platform.Characteristic.RotationDirection));
-    } else {
+    if (!pA.disableDirectionControl) {
       pA.fanService.getCharacteristic(pA.platform.Characteristic.RotationDirection)
         .onSet(pA.setRotationDirection.bind(pA))
         .onGet(pA.getRotationDirection.bind(pA));
     }
 
-    if (pA.showWhooshSwitch) {
-      pA.whooshSwitchService = pA.accessory.getService('whooshSwitch') ||
-        pA.accessory.addService(pA.platform.Service.Switch, 'whooshSwitch', 'switch-1');
-      accessoryName = capitalizeName ?  ' Whoosh' : ' whoosh';
-      // pA.whooshSwitchService.setCharacteristic(pA.platform.Characteristic.Name, pA.Name + accessoryName);
-      setName(pA, pA.whooshSwitchService, pA.Name + accessoryName);
+    // SwingMode maps to Whoosh: 0=Disabled, 1=Enabled
+    pA.fanService.getCharacteristic(pA.platform.Characteristic.SwingMode)
+      .onSet(pA.setSwingMode.bind(pA))
+      .onGet(pA.getSwingMode.bind(pA));
 
-      pA.whooshSwitchService.getCharacteristic(pA.platform.Characteristic.On)
-        .onSet(pA.setWhooshSwitchOnState.bind(pA))
-        .onGet(pA.getWhooshSwitchOnState.bind(pA));
-    } else {
-      const service = pA.accessory.getService('whooshSwitch');
-      if (service) {
-        pA.accessory.removeService(service);
-      }
+    // Remove legacy whoosh switch if present (now native SwingMode)
+    const legacyWhoosh = pA.accessory.getService('whooshSwitch');
+    if (legacyWhoosh) {
+      pA.accessory.removeService(legacyWhoosh);
     }
+
     if (pA.showDimToWarmSwitch) {
       pA.dimToWarmSwitchService = pA.accessory.getService('dimToWarmSwitch') ||
         pA.accessory.addService(pA.platform.Service.Switch, 'dimToWarmSwitch', 'switch-2');
       accessoryName = capitalizeName ?  ' Dim to Warm' : ' dim to warm';
-      // pA.dimToWarmSwitchService.setCharacteristic(pA.platform.Characteristic.Name, pA.Name + accessoryName);
       setName(pA, pA.dimToWarmSwitchService, pA.Name + accessoryName);
 
       pA.dimToWarmSwitchService.getCharacteristic(pA.platform.Characteristic.On)
@@ -980,11 +1029,13 @@ function makeServices(pA: BAF) {
         pA.accessory.removeService(service);
       }
     }
+
+    // Legacy fan auto switch - still supported for users who want a separate switch
+    // (TargetFanState in Fanv2 provides this natively, but some prefer an explicit switch)
     if (pA.showFanAutoSwitch) {
       pA.fanAutoSwitchService = pA.accessory.getService('fanAutoSwitch') ||
         pA.accessory.addService(pA.platform.Service.Switch, 'fanAutoSwitch', 'switch-3');
       accessoryName = capitalizeName ?  ' Fan Auto' : ' fan auto';
-      // pA.fanAutoSwitchService.setCharacteristic(pA.platform.Characteristic.Name, pA.Name + accessoryName);
       setName(pA, pA.fanAutoSwitchService, pA.Name + accessoryName);
 
       pA.fanAutoSwitchService.getCharacteristic(pA.platform.Characteristic.On)
@@ -1272,19 +1323,10 @@ function zapService(pA:BAF, serviceName: string) {
 * connect to the fan, send capability query and initialization message,
 * establish the error and data callbacks and start a keep-alive interval timer.
 */
-import net = require('net');
-
 function networkSetup(pA: BAF) {
 
   if (pA.ProbeFrequency !== 0) {
-    // attempt to prevent the occassional socket reset.
-    // sending the mysterious code that the vendor app seems to send once every 15s but instead sending every minute - didn't prevent it.
-    // sending every 15 seconds didn't help.
-    // calling socket.setKeepAlive([enable][, initialDelay]) when I establish it above didn't help.
-    // obviously, I don't understand this stuff.
-    // once I got an EPIPE 5+ hours after a reset, and repeaated EPIPEs every minute for the next 7 minutes, then one more after 4 minutes
-    // then clear sailing for 1+ hours so far.
-    pA.probeTimeout = setInterval(( )=> {
+    pA.probeTimeout = setInterval(() => {
       if (pA.client !== undefined) {
         clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x03], pA); // parroting the BAF app
       } else {
@@ -1293,87 +1335,89 @@ function networkSetup(pA: BAF) {
     }, pA.ProbeFrequency);
   }
 
-  const connectOptions = {port: 31415, host: pA.IP, family: 4};
-  pA.client = net.connect(connectOptions, () => {
-    debugLog(pA, ['network', 'progress'], [1, 2], 'connected!');
+  // removed family: 4 to allow IPv6 and mDNS hostname resolution (issue #29)
+  const connectOptions: net.NetConnectOpts = {port: 31415, host: pA.IP};
+  let retryCount = 0;
+
+  function sendInitSequence() {
     pA.client.setKeepAlive(true);
     clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x06], pA);  // get capabilities
     clientWrite(pA.client, [0x12, 0x02, 0x1a, 0x00], pA);  // BAF app seemed to send this so we will also
-  });
+    // clear any stale chunk fragment from previous connection
+    pA.chunkFragment = Buffer.alloc(0);
+  }
 
-  let errHandler;
-  let retryCount = 0;
-  let retrySeconds = 0;
-
-  pA.client.on('error', errHandler = (err) => {
-    debugLog(pA, 'reconnect', 1, `"${err.message}"`);
-
-    retrySeconds = backOff(err.code, retryCount);
-    switch (err.code) {
-      case 'ECONNREFUSED':
-        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection refused ${err.code}.  Check that the correct IP is in config.json.`);
-        // why clearInterval here but not in the other case that returns
-        if (pA.probeTimeout !== undefined) {
-          clearInterval(pA.probeTimeout);
-        }
-        return;
-      case 'ENETUNREACH':
-        // hbLog.error(pA.Name + ' (' + pA.IP + ')' + ` is unreachable [${err.code}].  Check the correct IP is in config.json.`);
-        pA.platform.log.error(`${pA.Name} (${pA.IP}) is unreachable [${err.code}].\n` +
-          `Check the correct IP in config.json. Will retry in ${retrySeconds} seconds.`);
-        break;
-        // return;
-
-      case 'ETIMEDOUT':
-        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection timed out [${err.code}].\n` +
-          `Check your fan has power and the correct IP in config.json. Will retry in ${retrySeconds} seconds.`);
-        break;
-      case 'EHOSTDOWN': {
-        const minutes = Math.round(retrySeconds / 60);
-        pA.platform.log.error(pA.Name + ' (' + pA.IP + ')' + ` connection problem [${err.code}].` +
-          `Attempting reconnect in ${minutes} ${minutes === 1 ? 'minute.' : 'minutes.'}`);
-        break;
-      }
-      case 'ECONNRESET':
-        // noticed 7/17/2023 there is an ECONNRESET every two hours.  But not always.
-        debugLog(pA, 'reconnect', 1,
-          `${pA.Name} (${pA.IP}) network connection reset [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
-        debugLog(pA, 'reconnect', 1, `uptime: ${toDaysHoursMinutesString(pA.uptimeMinutes)}`);
-        break;
-      case 'EPIPE':
-        pA.platform.log.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
-        break;
-      case 'ENOTFOUND':
-        pA.platform.log.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
-        break;
-
-      default:
-        pA.platform.log.warn(`${pA.Name} (${pA.IP}) Unhandled network error: [${err.code}].  Attempting reconnect in ${retrySeconds} seconds.`);
-        break;
-    }
-
+  function scheduleReconnect(errCode: string) {
+    const retrySeconds = backOff(errCode, retryCount);
     retryCount++;
     pA.client = undefined;
-    // debugLog(pA, 'reconnect', 1, `will reconnect in ${retrySeconds} seconds.`);
+
     setTimeout(() => {
-      // already did this one or more times, don't need to send initilization message
-      // debugLog(pA, 'reconnect', 1, 'attempting reconnect...');
       pA.client = net.connect(connectOptions, () => {
         retryCount = 0;
-        if (err.code !== 'ECONNRESET') { // ECONNRESETs seem pretty normal and regular
+        if (errCode !== 'ECONNRESET') {
           pA.platform.log.info(pA.Name + ' reconnected!');
         }
-        debugLog(pA, ['network', 'reconnect'], [1, 1], `reconnected after [${err.code}]`);
+        debugLog(pA, ['network', 'reconnect'], [1, 1], `reconnected after [${errCode}]`);
+        sendInitSequence();  // re-send init on every reconnect (issue #41)
       });
-      pA.client.on('error', (err) => {
-        errHandler(err);
-      });
-      pA.client.on('data', (data) => {
+      pA.client.on('error', handleError);
+      pA.client.on('data', (data: Buffer) => {
         onData(pA, data);
       });
     }, retrySeconds * 1000);
+
+    return retrySeconds;
+  }
+
+  function handleError(err: NodeJS.ErrnoException) {
+    debugLog(pA, 'reconnect', 1, `"${err.message}"`);
+
+    switch (err.code) {
+      case 'ECONNREFUSED':
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection refused [${err.code}]. ` +
+          'Check that the correct IP is in config.json. Will retry.');
+        break;
+      case 'ENETUNREACH':
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) is unreachable [${err.code}]. ` +
+          'Check the correct IP in config.json.');
+        break;
+      case 'ETIMEDOUT':
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection timed out [${err.code}]. ` +
+          'Check your fan has power and the correct IP in config.json.');
+        break;
+      case 'EHOSTDOWN': {
+        pA.platform.log.error(`${pA.Name} (${pA.IP}) connection problem [${err.code}].`);
+        break;
+      }
+      case 'ECONNRESET':
+        debugLog(pA, 'reconnect', 1,
+          `${pA.Name} (${pA.IP}) network connection reset [${err.code}].`);
+        debugLog(pA, 'reconnect', 1, `uptime: ${toDaysHoursMinutesString(pA.uptimeMinutes)}`);
+        break;
+      case 'EPIPE':
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) network connection broke [${err.code}].`);
+        break;
+      case 'ENOTFOUND':
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) hostname not found [${err.code}]. ` +
+          'Check hostname/IP in config.json.');
+        break;
+      default:
+        pA.platform.log.warn(`${pA.Name} (${pA.IP}) unhandled network error: [${err.code}].`);
+        break;
+    }
+
+    const retrySeconds = scheduleReconnect(err.code || 'UNKNOWN');
+    debugLog(pA, 'reconnect', 1, `will reconnect in ${retrySeconds} seconds.`);
+  }
+
+  // initial connection with retry support (issue #35)
+  pA.client = net.connect(connectOptions, () => {
+    debugLog(pA, ['network', 'progress'], [1, 2], 'connected!');
+    sendInitSequence();
   });
 
+  pA.client.on('error', handleError);
   pA.client.on('data', (data: Buffer) => {
     onData(pA, data);
   });
@@ -1767,17 +1811,27 @@ function targetedlightOnState(value:number, service:Service, states:lightStates,
 
 function fanOnState(s: string, pA:BAF) {
   const value = Number(s);
+
+  // Update TargetFanState: 0=Manual, 1=Auto
+  const isAuto = (value === 2);
+  pA.fanStates.TargetFanState = isAuto ? 1 : 0;
+  debugLog(pA, 'characteristics', 3, 'update TargetFanState: ' + pA.fanStates.TargetFanState);
+  pA.fanService.updateCharacteristic(pA.platform.Characteristic.TargetFanState, pA.fanStates.TargetFanState);
+
+  // Legacy auto switch support
   if (pA.showFanAutoSwitch) {
-    pA.fanAutoSwitchOn = (value === 2) ? true: false;
+    pA.fanAutoSwitchOn = isAuto;
     debugLog(pA, 'characteristics', 3, 'update fan auto: ' + pA.fanAutoSwitchOn);
     pA.fanAutoSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanAutoSwitchOn);
   }
 
-  if (value !== 2) {
-    const onValue = (value === 0 ? false : true);
-    pA.fanStates.On = onValue;
-    debugLog(pA, 'characteristics', 3, 'update FanOn: ' + pA.fanStates.On);
-    pA.fanService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanStates.On);
+  if (!isAuto) {
+    const activeValue = (value === 0 ? 0 : 1);
+    pA.fanStates.Active = activeValue;
+    pA.fanStates.CurrentFanState = activeValue === 0 ? 0 : 2; // 0=Inactive, 2=BlowingAir
+    debugLog(pA, 'characteristics', 3, 'update Fan Active: ' + pA.fanStates.Active);
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
   }
 }
 
@@ -1802,16 +1856,20 @@ function fanRotationSpeed(s: string, pA:BAF) {
     debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update RotationSpeed: ' + speedPercent + '%');
     pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, speedPercent);
 
-    if (!pA.fanStates.On) {
-      pA.fanStates.On = true;
-      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update FanOn: ' + pA.fanStates.On + ' because (auto && speed > 0)');
-      pA.fanService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanStates.On);
+    if (pA.fanStates.Active === 0) {
+      pA.fanStates.Active = 1;
+      pA.fanStates.CurrentFanState = 2; // BlowingAir
+      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 1 because speed > 0');
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
     }
   } else {
-    if (pA.fanStates.On) {
-      pA.fanStates.On = false;
-      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update FanOn: ' + pA.fanStates.On + ' because (auto && speed == 0)');
-      pA.fanService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanStates.On);
+    if (pA.fanStates.Active === 1) {
+      pA.fanStates.Active = 0;
+      pA.fanStates.CurrentFanState = 0; // Inactive
+      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 0 because speed == 0');
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
     }
   }
 }
@@ -1878,11 +1936,13 @@ function currentRelativeHumidity(s: string, pA:BAF) {
 
 function whooshOnState(s: string, pA:BAF) {
   const value = Number(s);
-  if (pA.showWhooshSwitch) {
-    const onValue = (value === 0 ? false : true);
-    pA.whooshSwitchOn = onValue;
-    debugLog(pA, 'characteristics', 3, 'update Whoosh:' + pA.whooshSwitchOn);
-    pA.whooshSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.whooshSwitchOn);
+  const onValue = (value === 0 ? false : true);
+  pA.whooshSwitchOn = onValue;
+
+  // Update SwingMode on Fanv2 service (always available)
+  if (pA.fanService) {
+    debugLog(pA, 'characteristics', 3, 'update SwingMode (Whoosh): ' + (onValue ? 1 : 0));
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.SwingMode, onValue ? 1 : 0);
   }
 }
 
@@ -2093,10 +2153,10 @@ function varint_encode(n: number) : number[] {
   const a : number[] = [];
 
   while (n & ~0x7F) {
-    a.push(n & 0xFF) | 0x80;
-    n = n >> 7;
+    a.push((n & 0x7F) | 0x80);
+    n = n >>> 7;
   }
-  a.push(n);
+  a.push(n & 0x7F);
   return a;
 }
 
@@ -2107,53 +2167,51 @@ function hexFormat(arg) {
   return arg.toString('hex').replace(/../g, '0x$&, ').trim().slice(0, -1);
 }
 
-let lastDebugMessage = 'lastDebugMessage initializer';
-let lastDebugMessageTag = 'lastDebugMessageTag initializer';
 function debugLog(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
   if (typeof(logTag) === 'string') {
     if (pA.debugLevels[logTag] === undefined) {
       pA.platform.log.warn('no such logging tag: "' + logTag + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
     } else {
-      if (pA.debugLevels[logTag] >= logLevel) {
+      if (pA.debugLevels[logTag] >= (logLevel as number)) {
         pA.platform.log.debug('dblog ' + logTag + '(' + logLevel + '/'  + pA.debugLevels[logTag] + ') ' + pA.Name + ' - ' +  logMessage);
       }
     }
   } else {
+    const levels = logLevel as number[];
     for (let i = 0; i < logTag.length; i++) {
       if (pA.debugLevels[logTag[i]] === undefined) {
         pA.platform.log.warn('no such logging tag: "' + logTag[i] + '", the message from ' + pA.Name + ' is: "' + logMessage + '"');
       } else {
-        if (pA.debugLevels[logTag[i]] >= logLevel[i]) {
-          if (lastDebugMessage === logMessage && lastDebugMessageTag !== logTag[i]) {
+        if (pA.debugLevels[logTag[i]] >= levels[i]) {
+          if (pA.lastDebugMessage === logMessage && pA.lastDebugMessageTag !== logTag[i]) {
             // ignore it, it's redundant
             return;
           }
-          pA.platform.log.debug('dblog ' + logTag[i] + '(' + logLevel[i] + '/' + pA.debugLevels[logTag[i]] + ') ' + pA.Name + ' - ' +  logMessage);
-          lastDebugMessage = logMessage;
-          lastDebugMessageTag = logTag[i];
+          pA.platform.log.debug(
+            `dblog ${logTag[i]}(${levels[i]}/${pA.debugLevels[logTag[i]]}) ${pA.Name} - ${logMessage}`);
+          pA.lastDebugMessage = logMessage;
+          pA.lastDebugMessageTag = logTag[i];
         }
       }
     }
   }
 }
 
-const messagesLogged:string[] = [];
-
 function debugLogOnce(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
-  if (messagesLogged.includes(logMessage)) {
+  if (pA.messagesLogged.includes(logMessage)) {
     return;
   } else {
     debugLog(pA, logTag, logLevel, logMessage);
-    messagesLogged.push(logMessage);
+    pA.messagesLogged.push(logMessage);
   }
 }
 
 function infoLogOnce(pA:BAF, logMessage: string) {
-  if (messagesLogged.includes(logMessage)) {
+  if (pA.messagesLogged.includes(logMessage)) {
     return;
   } else {
     pA.platform.log.info(pA.Name + ' - ' + logMessage);
-    messagesLogged.push(logMessage);
+    pA.messagesLogged.push(logMessage);
   }
 }
 
@@ -2219,8 +2277,6 @@ function getProtoElements(b: Buffer): [Buffer, number, number] {
 // 5	I32	fixed32, sfixed32, float
 
 type funCall = [((s: string, pA: BigAssFans_i6PlatformAccessory) => void), string];
-let debugLastFanOccupancyValue = 0;
-let debugLastLightOccupancyValue = 0;
 const rebootReasons = [
   'zero entry',
   'Unknown',
@@ -2234,10 +2290,6 @@ const rebootReasons = [
   'Lockup',
   'Pin',
 ];
-let uptimeLogged = false;
-let lastRebootCount = 0;
-let showRebootReason = true;
-
 function buildFunStack(b:Buffer, pA: BAF): funCall[] {
   let type: number;
   let field: number;
@@ -2311,10 +2363,10 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                 if (pA.capabilities.hasOccupancySensor) {
                   funStack.push([fanOccupancyDetectedState, String(v)]);
                 }
-                if (v !== debugLastFanOccupancyValue) {
+                if (v !== pA.debugLastFanOccupancyValue) {
                   debugLog(pA, 'occupancy', 1, `fan occupancy: ${v} detected per field: ${field}`);
                 }
-                debugLastFanOccupancyValue = v;
+                pA.debugLastFanOccupancyValue = v;
                 break;
               case 67:  // fan on means auto
                 [b, v] = getValue(b);
@@ -2362,10 +2414,10 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                 if (pA.capabilities.hasOccupancySensor) {
                   funStack.push([lightOccupancyDetectedState, String(v)]);
                 }
-                if (v !== debugLastLightOccupancyValue) {
+                if (v !== pA.debugLastLightOccupancyValue) {
                   debugLog(pA, 'occupancy', 1, `light occupancy: ${v} detected per field: ${field}`);
                 }
-                debugLastLightOccupancyValue = v;
+                pA.debugLastLightOccupancyValue = v;
                 break;
               case 86:  // temperature
                 [b, v] = getValue(b);
@@ -2740,25 +2792,25 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                   switch (field) {
                     case 1: // uptime (minutes)
                       pA.uptimeMinutes = v;
-                      if (!uptimeLogged) {
+                      if (!pA.uptimeLogged) {
                         debugLog(pA, 'manufacturerDebug', 1, `uptime: ${toDaysHoursMinutesString(v)}`);
-                        uptimeLogged = true;
+                        pA.uptimeLogged = true;
                       }
                       break;
                     case 2: // reboot count total
-                      if (v !== lastRebootCount) {
+                      if (v !== pA.lastRebootCount) {
                         debugLog(pA, 'manufacturerDebug', 1, `reboot count total: ${v}`);
-                        showRebootReason = true;
+                        pA.showRebootReason = true;
                       }
-                      lastRebootCount = v;
+                      pA.lastRebootCount = v;
                       break;
                     case 3: // reboot count since por(?)
                       debugLog(pA, 'manufacturerDebug', 1, `reboot count since por: ${v}`);
                       break;
                     case 4: // last reboot reason (see schema)
-                      if (showRebootReason) {
+                      if (pA.showRebootReason) {
                         debugLog(pA, 'manufacturerDebug', 1, `reboot reason: ${rebootReasons[v]}`);
-                        showRebootReason = false;
+                        pA.showRebootReason = false;
                       }
                       break;
                     case 5: // last reboot details

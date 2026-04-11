@@ -1,23 +1,23 @@
 {
   "private": false,
-  "displayName": "Big Ass Fans i6",
-  "name": "homebridge-i6-bigassfans",
-  "version": "0.6.1-beta10",
-  "description": "Homebridge plugin for Big Ass Fans.",
+  "displayName": "Big Ass Fans (Homebridge 2)",
+  "name": "homebridge2-bigassfans",
+  "version": "1.0.0-beta.1",
+  "description": "Homebridge 2.0 plugin for Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/applemanj/homebridge-i6-bigAssFans"
+    "url": "https://github.com/applemanj/homebridge2-bigAssFans"
   },
   "bugs": {
-    "url": "https://github.com/applemanj/homebridge-i6-bigAssFans/issues"
+    "url": "https://github.com/applemanj/homebridge2-bigAssFans/issues"
   },
   "engines": {
-    "homebridge": "^1.8.0 || ^2.0.0-beta.0 || ^2.0.0",
-    "node": "^18.20.4 || ^20.15.1 || ^22.0.0 || ^24.0.0"
+    "homebridge": "^2.0.0-beta.0 || ^2.0.0",
+    "node": "^20.15.1 || ^22.0.0 || ^24.0.0"
   },
   "peerDependencies": {
-    "homebridge": "^1.8.0 || ^2.0.0-beta.0 || ^2.0.0"
+    "homebridge": "^2.0.0-beta.0 || ^2.0.0"
   },
   "main": "dist/index.js",
   "scripts": {
@@ -33,15 +33,16 @@
     "ceiling-fan",
     "fan",
     "i6",
-    "e6",
-    "haiku"
+    "es6",
+    "haiku",
+    "homebridge-2"
   ],
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.57.0",
-    "homebridge": "^1.8.0",
+    "homebridge": "^2.0.0-beta.0",
     "nodemon": "^3.0.0",
     "rimraf": "^6.0.0",
     "ts-node": "^10.9.0",
