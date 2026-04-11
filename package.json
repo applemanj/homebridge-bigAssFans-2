@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Big Ass Fans (Homebridge 2)",
   "name": "homebridge-bigassfans-2",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "Homebridge 2.0 plugin for Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series.",
   "license": "MIT",
   "repository": {
@@ -13,11 +13,11 @@
     "url": "https://github.com/applemanj/homebridge2-bigAssFans/issues"
   },
   "engines": {
-    "homebridge": "^2.0.0-beta.0 || ^2.0.0",
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0 || ^2.0.0",
     "node": "^20.15.1 || ^22.0.0 || ^24.0.0"
   },
   "peerDependencies": {
-    "homebridge": "^2.0.0-beta.0 || ^2.0.0"
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0 || ^2.0.0"
   },
   "main": "dist/index.js",
   "scripts": {
