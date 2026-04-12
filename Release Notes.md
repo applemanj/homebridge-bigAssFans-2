@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.2
+
+**UX / Logging**
+- Added startup capability summary logging so users can see which fan capabilities were detected and which services are exposed or hidden by config.
+- Added README guidance recommending a minimal config first, then adding overrides only when needed.
+
+---
+
 ### v1.1.1
 
 **Testing / Packaging**

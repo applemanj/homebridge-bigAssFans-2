@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.1
+## homebridge-bigassfans-2 v1.1.2
 
 </span>
 
@@ -35,6 +35,10 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.2**
+- Added startup capability summary logging so users can see which features each fan actually reports and which are exposed in HomeKit.
+- Added README guidance recommending a minimal config first, then adding overrides only when needed.
 
 **v1.1.1**
 - Added a lightweight regression harness for parser and reconnect edge cases.
