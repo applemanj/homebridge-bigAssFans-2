@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.0.3
+## homebridge-bigassfans-2 v1.1.1
 
 </span>
 
@@ -35,6 +35,10 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.1**
+- Added a lightweight regression harness for parser and reconnect edge cases.
+- Package metadata now reflects the current release series consistently.
 
 **v1.0.3**
 - Hardened protobuf parsing so malformed or truncated frames are safely dropped instead of risking a stuck parse loop.
@@ -137,6 +141,29 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
 }
 ```
 
+#### Recommended Minimal Config
+
+Start with the smallest config that identifies each fan:
+
+```json
+{
+  "platform": "BigAssFans-i6",
+  "fans": [
+    {
+      "name": "Bedroom Fan",
+      "ip": "192.168.1.150",
+      "mac": "20:F8:5E:00:00:00"
+    }
+  ]
+}
+```
+
+Then let the plugin detect the fan's capabilities at startup and only add override options if you actually need them, for example:
+- `noLights` if you want to hide all lighting services
+- `disableDirectionControl` if you want to hide reverse control
+- `showTemperature` or `showHumidity` if you want to override the default sensor exposure behavior
+- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan
+
 ### Configuration Fields
 
 #### Required
@@ -204,10 +231,12 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
    homebridge -D
    ```
 
-3. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
+3. **Check the startup capability summary** in the Homebridge logs. After each fan connects, the plugin logs which features were detected and which ones are being exposed or hidden by config. This is the easiest way to confirm whether your fan actually reports temperature, humidity, lights, occupancy, standby LED support, and similar capabilities.
 
-4. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
-5. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
+4. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
+
+5. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
+6. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
 
 ### Tips
 

@@ -2,6 +2,7 @@ misc
 
 # Ignore source code
 src
+tests
 
 # ------------- Defaults ------------- #
 

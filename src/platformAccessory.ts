@@ -2647,6 +2647,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                   debugLog(pA, 'progress', 1, 'capabilities established');
                   logCapabilities(pA);
                   makeServices(pA);
+                  logCapabilitySummary(pA);
                 }
 
                 break;
@@ -3220,6 +3221,103 @@ function logCapabilities(pA:BigAssFans_i6PlatformAccessory) {
     debugLog(pA, 'capabilities', 1, 'has eco mode');
   } else {
     debugLog(pA, 'capabilities', 1, 'no eco mode');
+  }
+}
+
+function logCapabilitySummary(pA: BigAssFans_i6PlatformAccessory) {
+  const detected: string[] = [];
+  const exposed: string[] = [];
+  const hiddenByConfig: string[] = [];
+
+  if (pA.capabilities.hasFan) {
+    detected.push('fan');
+    exposed.push('fan');
+  }
+
+  if (pA.capabilities.hasLight) {
+    detected.push('downlight');
+    if (pA.noLights) {
+      hiddenByConfig.push('downlight');
+    } else {
+      exposed.push('downlight');
+    }
+  }
+
+  if (pA.capabilities.hasUplight) {
+    detected.push('uplight');
+    if (pA.noLights) {
+      hiddenByConfig.push('uplight');
+    } else {
+      exposed.push('uplight');
+    }
+  }
+
+  if (pA.capabilities.hasUVCLight) {
+    detected.push('uv-c');
+    if (pA.noLights) {
+      hiddenByConfig.push('uv-c');
+    } else {
+      exposed.push('uv-c');
+    }
+  }
+
+  if (pA.capabilities.hasTempSensor) {
+    detected.push('temperature');
+    if (pA.showTemperature === false) {
+      hiddenByConfig.push('temperature');
+    } else {
+      exposed.push('temperature');
+    }
+  }
+
+  if (pA.capabilities.hasHumiditySensor) {
+    detected.push('humidity');
+    if (pA.showHumidity === false) {
+      hiddenByConfig.push('humidity');
+    } else {
+      exposed.push('humidity');
+    }
+  }
+
+  if (pA.capabilities.hasOccupancySensor) {
+    detected.push('occupancy');
+    if (pA.showFanOccupancySensor) {
+      exposed.push('fan occupancy');
+    }
+    if (pA.showLightOccupancySensor) {
+      exposed.push('light occupancy');
+    }
+    if (!pA.showFanOccupancySensor && !pA.showLightOccupancySensor) {
+      hiddenByConfig.push('occupancy');
+    }
+  }
+
+  if (pA.capabilities.hasStandbyLED) {
+    detected.push('standby led');
+    if (pA.showStandbyLED) {
+      exposed.push('standby led');
+    } else {
+      hiddenByConfig.push('standby led');
+    }
+  }
+
+  if (pA.capabilities.hasEcoMode) {
+    detected.push('eco mode');
+    if (pA.showEcoModeSwitch) {
+      exposed.push('eco mode');
+    } else {
+      hiddenByConfig.push('eco mode');
+    }
+  }
+
+  const detectedSummary = detected.length > 0 ? detected.join(', ') : 'none';
+  const exposedSummary = exposed.length > 0 ? exposed.join(', ') : 'none';
+
+  pA.platform.log.info(`${pA.Name} - detected capabilities: ${detectedSummary}`);
+  pA.platform.log.info(`${pA.Name} - exposed in HomeKit: ${exposedSummary}`);
+
+  if (hiddenByConfig.length > 0) {
+    pA.platform.log.info(`${pA.Name} - hidden by config: ${hiddenByConfig.join(', ')}`);
   }
 }
 function doUnknownField(b: Buffer, type: number, pA: BAF) {

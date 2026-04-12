@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.1
+
+**Testing / Packaging**
+- Added a lightweight regression harness covering parser and reconnect edge cases.
+- Synchronized package metadata and lockfile versioning with the current release.
+
+---
+
 ### v1.1.0
 
 **Bug Fixes**
