@@ -50,6 +50,16 @@ function createTestAccessoryState() {
       capabilitiesEstablished: false,
       uptimeMinutes: 0,
       enableDebugPort: false,
+      fanAutoSwitchOn: false,
+      showFanAutoSwitch: false,
+      fanStates: {
+        Active: 0,
+        CurrentFanState: 0,
+        TargetFanState: 0,
+        RotationSpeed: 0,
+        RotationDirection: 1,
+        homeShieldUp: false,
+      },
       debugLevels: {
         network: 0,
         reconnect: 0,
@@ -63,11 +73,24 @@ function createTestAccessoryState() {
       lastDebugMessage: '',
       lastDebugMessageTag: '',
       platform: {
+        Characteristic: {
+          Active: 'Active',
+          CurrentFanState: 'CurrentFanState',
+          RotationSpeed: 'RotationSpeed',
+          TargetFanState: 'TargetFanState',
+          On: 'On',
+        },
         log: {
           warn: (message: string) => warnings.push(message),
           error: (_message: string) => undefined,
           info: (message: string) => infos.push(message),
           debug: (message: string) => debugs.push(message),
+        },
+      },
+      fanService: {
+        updates: [] as Array<{ characteristic: string; value: number }>,
+        updateCharacteristic(characteristic: string, value: number) {
+          this.updates.push({ characteristic, value });
         },
       },
     },
@@ -100,20 +123,38 @@ function testMalformedFrameIsDropped() {
   assert.match(warnings[0], /dropped malformed protobuf frame/i);
 }
 
+function testAutoModeStateSync() {
+  const { state } = createTestAccessoryState();
+
+  __test__.fanOnState('2', state as never);
+  assert.equal(state.fanStates.TargetFanState, 1);
+  assert.equal(state.fanStates.Active, 1);
+  assert.equal(state.fanStates.CurrentFanState, 1);
+
+  __test__.fanRotationSpeed('3', state as never);
+  assert.equal(state.fanStates.Active, 1);
+  assert.equal(state.fanStates.CurrentFanState, 2);
+
+  __test__.fanRotationSpeed('0', state as never);
+  assert.equal(state.fanStates.Active, 1);
+  assert.equal(state.fanStates.CurrentFanState, 1);
+}
+
 async function testReconnectOnClose() {
   const { state } = createTestAccessoryState();
   const originalSetTimeout = global.setTimeout;
   const sockets: FakeSocket[] = [];
+  const pendingConnectListeners: Array<() => void> = [];
 
   try {
     __test__.setConnectSocketForTest(((_: net.NetConnectOpts, listener?: () => void) => {
-        const socket = new FakeSocket();
-        sockets.push(socket);
-        if (listener) {
-          listener();
-        }
-        return socket as unknown as net.Socket;
-      }) as typeof net.connect);
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      if (listener) {
+        pendingConnectListeners.push(listener);
+      }
+      return socket as unknown as net.Socket;
+    }) as typeof net.connect);
 
     global.setTimeout = (((
       callback: (...args: never[]) => void,
@@ -125,9 +166,11 @@ async function testReconnectOnClose() {
     }) as unknown as typeof setTimeout);
 
     __test__.networkSetup(state as never);
+    pendingConnectListeners.shift()?.();
     assert.equal(sockets.length, 1);
 
     sockets[0].emit('close');
+    pendingConnectListeners.shift()?.();
 
     assert.equal(sockets.length, 2);
     assert.equal(sockets[0].destroyed, true);
@@ -138,11 +181,66 @@ async function testReconnectOnClose() {
   }
 }
 
+async function testProbeRequestsStateRefresh() {
+  const { state } = createTestAccessoryState();
+  state.ProbeFrequency = 60000;
+
+  const originalSetTimeout = global.setTimeout;
+  const originalSetInterval = global.setInterval;
+  const sockets: FakeSocket[] = [];
+  const pendingConnectListeners: Array<() => void> = [];
+  let intervalCallback: (() => void) | undefined;
+
+  try {
+    __test__.setConnectSocketForTest(((_: net.NetConnectOpts, listener?: () => void) => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      if (listener) {
+        pendingConnectListeners.push(listener);
+      }
+      return socket as unknown as net.Socket;
+    }) as typeof net.connect);
+
+    global.setTimeout = (((
+      callback: (...args: never[]) => void,
+      _delay?: number,
+      ..._args: never[]
+    ) => {
+      callback();
+      return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
+    global.setInterval = (((
+      callback: (...args: never[]) => void,
+      _delay?: number,
+      ..._args: never[]
+    ) => {
+      intervalCallback = () => callback();
+      return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setInterval>;
+    }) as unknown as typeof setInterval);
+
+    __test__.networkSetup(state as never);
+    pendingConnectListeners.shift()?.();
+    assert.equal(sockets.length, 1);
+    assert.equal(sockets[0].writes.length, 2);
+
+    intervalCallback?.();
+
+    assert.equal(sockets[0].writes.length, 4);
+  } finally {
+    __test__.resetConnectSocketForTest();
+    global.setTimeout = originalSetTimeout;
+    global.setInterval = originalSetInterval;
+  }
+}
+
 async function main() {
   testGetVarintSupportsLargeValues();
   testStandbyLEDColorMessageUsesVarints();
   testMalformedFrameIsDropped();
+  testAutoModeStateSync();
   await testReconnectOnClose();
+  await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');
 }
 

@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.2
+## homebridge-bigassfans-2 v1.1.4
 
 </span>
 
@@ -21,6 +21,8 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - `CurrentFanState` reports whether the fan is Inactive, Idle, or Blowing Air.
 - Legacy cached `Fan` and `whooshSwitch` services are automatically cleaned up on upgrade.
 
+> **Home App labeling note:** Apple labels the native `SwingMode` control as **Oscillate** in the Home app. In this plugin, **Oscillate = Big Ass Fans Whoosh**. Apple also labels `TargetFanState` as **Fan Mode: Manual / Auto**; in this plugin, **Auto = the fan's built-in Big Ass Fans auto mode**.
+
 **Bug Fixes**
 - **Connection stability** -- Reconnections now re-send the initialization and capability query to the fan, fixing the issue where a daily restart was required to restore communication (upstream [#41](https://github.com/oogje/homebridge-i6-bigAssFans/issues/41)).
 - **Fans offline at startup** -- All connection errors (including `ECONNREFUSED`) now trigger automatic retry with exponential backoff, so fans that are powered off or unreachable at boot will connect once available (upstream [#35](https://github.com/oogje/homebridge-i6-bigAssFans/issues/35)).
@@ -35,6 +37,15 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.4**
+- External fan changes made in the Big Ass Fans app are now pulled back into HomeKit on the next probe cycle, even when the fan does not send an unsolicited state update.
+- HomeKit `Active` / `CurrentFanState` now stay in sync more reliably for external auto-mode transitions.
+- Added regression checks covering periodic state refresh and external auto-mode synchronization.
+
+**v1.1.3**
+- External fan changes made in the Big Ass Fans app now update HomeKit `Active` / `CurrentFanState` more reliably, including auto-mode transitions.
+- Added a regression check covering external auto-mode state synchronization.
 
 **v1.1.2**
 - Added startup capability summary logging so users can see which features each fan actually reports and which are exposed in HomeKit.
@@ -194,7 +205,7 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `probeFrequency` | `60000` | Keep-alive probe interval in milliseconds (`0` disables probing) |
+| `probeFrequency` | `60000` | Keep-alive and state-refresh interval in milliseconds (`0` disables periodic probing) |
 | `noLights` | `false` | Hide all light controls |
 | `showHumidity` | `true` | Expose humidity sensor |
 | `showTemperature` | `true` | Expose temperature sensor |
@@ -226,6 +237,20 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 | Rotation Speed (%) | Rotation Speed (%) -- unchanged |
 | Rotation Direction | Rotation Direction -- unchanged |
 
+### Home App Terminology
+
+Because this plugin uses Apple's native `Fanv2` service, some labels in the Home app use Apple's generic fan wording instead of Big Ass Fans branding:
+
+| Home App Label | Big Ass Fans Feature |
+|---|---|
+| `Oscillate` | `Whoosh` |
+| `Fan Mode: Manual` | Fan manual mode |
+| `Fan Mode: Auto` | Big Ass Fans fan auto mode |
+
+The behavior is mapped correctly; only the labels are Apple's.
+
+State changes made outside HomeKit, such as turning a fan on in the Big Ass Fans app, are also reflected back into HomeKit so the fan tile stays in sync. If the fan does not push that update on its own, the plugin will pick it up on the next probe/state-refresh cycle.
+
 ### Troubleshooting
 
 1. **Make sure you can control your fan from the official Big Ass Fans app** before troubleshooting the plugin.
@@ -237,10 +262,12 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 
 3. **Check the startup capability summary** in the Homebridge logs. After each fan connects, the plugin logs which features were detected and which ones are being exposed or hidden by config. This is the easiest way to confirm whether your fan actually reports temperature, humidity, lights, occupancy, standby LED support, and similar capabilities.
 
-4. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
+4. **If external app changes seem delayed in HomeKit, lower `probeFrequency`.** With the default `60000`, it can take up to about 60 seconds for a change made in the Big Ass Fans app to appear in HomeKit if the fan does not push an unsolicited update. A lower value such as `10000` or `15000` will refresh more quickly.
 
-5. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
-6. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
+5. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
+
+6. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
+7. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
 
 ### Tips
 

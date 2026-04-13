@@ -1277,7 +1277,7 @@ function networkSetup(pA: BAF) {
   if (pA.ProbeFrequency !== 0) {
     pA.probeTimeout = setInterval(() => {
       if (pA.client !== undefined) {
-        clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x03], pA); // parroting the BAF app
+        sendProbeAndStateRefresh(pA);
       } else {
         debugLog(pA, 'network', 4, 'client undefined in setInterval callback');
       }
@@ -1294,7 +1294,7 @@ function networkSetup(pA: BAF) {
     }
     pA.client.setKeepAlive(true);
     clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x06], pA);  // get capabilities
-    clientWrite(pA.client, [0x12, 0x02, 0x1a, 0x00], pA);  // BAF app seemed to send this so we will also
+    sendStateRefreshRequest(pA);
     // clear any stale chunk fragment from previous connection
     pA.chunkFragment = Buffer.alloc(0);
   }
@@ -1781,14 +1781,35 @@ function fanOnState(s: string, pA:BAF) {
     pA.fanAutoSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanAutoSwitchOn);
   }
 
-  if (!isAuto) {
-    const activeValue = (value === 0 ? 0 : 1);
-    pA.fanStates.Active = activeValue;
-    pA.fanStates.CurrentFanState = activeValue === 0 ? 0 : 2; // 0=Inactive, 2=BlowingAir
-    debugLog(pA, 'characteristics', 3, 'update Fan Active: ' + pA.fanStates.Active);
-    pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
-    pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
+  const activeValue = (value === 0 ? 0 : 1);
+  pA.fanStates.Active = activeValue;
+
+  if (activeValue === 0) {
+    pA.fanStates.CurrentFanState = 0; // Inactive
+  } else if (pA.fanStates.RotationSpeed > 0) {
+    pA.fanStates.CurrentFanState = 2; // BlowingAir
+  } else {
+    pA.fanStates.CurrentFanState = 1; // Idle
   }
+
+  debugLog(pA, 'characteristics', 3, 'update Fan Active: ' + pA.fanStates.Active);
+  pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+  pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
+}
+
+function sendProbeAndStateRefresh(pA: BAF) {
+  if (!pA.client) {
+    return;
+  }
+  clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x03], pA); // parroting the BAF app
+  sendStateRefreshRequest(pA);
+}
+
+function sendStateRefreshRequest(pA: BAF) {
+  if (!pA.client) {
+    return;
+  }
+  clientWrite(pA.client, [0x12, 0x02, 0x1a, 0x00], pA);  // request current state snapshot
 }
 
 function fanRotationDirection(s: string, pA:BAF) {
@@ -1814,13 +1835,20 @@ function fanRotationSpeed(s: string, pA:BAF) {
 
     if (pA.fanStates.Active === 0) {
       pA.fanStates.Active = 1;
-      pA.fanStates.CurrentFanState = 2; // BlowingAir
       debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 1 because speed > 0');
       pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
-      pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
     }
+    pA.fanStates.CurrentFanState = 2; // BlowingAir
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
   } else {
-    if (pA.fanStates.Active === 1) {
+    if (pA.fanStates.TargetFanState === 1) {
+      // Auto mode with zero speed should remain Active but show Idle.
+      pA.fanStates.Active = 1;
+      pA.fanStates.CurrentFanState = 1; // Idle
+      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan State: Active=1, CurrentFanState=Idle because auto mode speed == 0');
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+      pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
+    } else if (pA.fanStates.Active === 1) {
       pA.fanStates.Active = 0;
       pA.fanStates.CurrentFanState = 0; // Inactive
       debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 0 because speed == 0');
@@ -3407,6 +3435,8 @@ function HSVtoRGB(hue: number, saturation: number, brightness: number) {
 export const __test__ = {
   ProtobufParseError,
   buildStandbyLEDColorMessage,
+  fanOnState,
+  fanRotationSpeed,
   getVarint,
   networkSetup,
   onData,

@@ -1,5 +1,22 @@
 ## Release Notes
 
+### v1.1.4
+
+**State Sync**
+- External fan changes made in the Big Ass Fans app are now pulled back into HomeKit on the next probe cycle, even when the fan does not send an unsolicited state update.
+- HomeKit `Active` and `CurrentFanState` now stay in sync more reliably for external auto-mode transitions.
+- Added regression coverage for periodic state refresh and external auto-mode synchronization.
+
+---
+
+### v1.1.3
+
+**State Sync**
+- External fan changes made in the Big Ass Fans app now update HomeKit `Active` and `CurrentFanState` more reliably, including auto-mode transitions.
+- Added a regression test covering external auto-mode state synchronization.
+
+---
+
 ### v1.1.2
 
 **UX / Logging**
