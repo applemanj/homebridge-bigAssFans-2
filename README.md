@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.4
+## homebridge-bigassfans-2 v1.1.5
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.5**
+- Fixed fan-only and `noLights` setups so inbound fan state updates are no longer blocked waiting for a light target selector message that may never arrive.
+- External fan changes from the Big Ass Fans app now flow back into HomeKit correctly even when the accessory has no light services.
+- Added regression coverage for fan state dispatch when `targetBulb` is unknown.
 
 **v1.1.4**
 - External fan changes made in the Big Ass Fans app are now pulled back into HomeKit on the next probe cycle, even when the fan does not send an unsolicited state update.

@@ -1540,28 +1540,15 @@ function onData(pA: BAF, data: Buffer) {
 
       throw error;
     }
-    if (pA.targetBulb === -1) {
+    if (!pA.capabilitiesEstablished) {
       funStack.forEach((value) => {
-        debugLog(pA, 'funstack', 1, `targetBulb === -1  ${value[0].name}(${value[1]})`);
+        debugLog(pA, 'funstack', 1, `queue until capabilities established: ${value[0].name}(${value[1]})`);
       });
       pA.funQueue.push(...funStack);
     } else {
-
       debugLog(pA, 'funstack', (funStack.length === 0) ? 2 : 1, `funstack.length: ${funStack.length}`);
       debugLog(pA, 'funstack', 1, `pA.capabilitiesEstablished: ${pA.capabilitiesEstablished}`);
-      if (pA.capabilitiesEstablished) {
-        pA.funQueue.forEach((value) => {
-          debugLog(pA, 'funstack', 1, `pA.funQueue.length:  ${pA.funQueue.length})`);
-          debugLog(pA, 'funstack', 1, `pA.funQueue:  ${value[0].name}(${value[1]})`);
-          value[0](value[1], pA);
-        });
-        pA.funQueue = [];
-
-        funStack.forEach((value) => {
-          debugLog(pA, 'funstack', 1, `  ${value[0].name}(${value[1]})`);
-          value[0](value[1], pA);
-        });
-      }
+      flushFunQueue(pA, funStack);
     }
   }
 }
@@ -3252,6 +3239,43 @@ function logCapabilities(pA:BigAssFans_i6PlatformAccessory) {
   }
 }
 
+function shouldDeferFunCall([handler]: funCall, pA: BAF) {
+  if (pA.targetBulb !== -1 || pA.bulbCount < 2) {
+    return false;
+  }
+
+  return handler === lightOnState || handler === lightBrightness || handler === lightColorTemperature;
+}
+
+function flushFunQueue(pA: BAF, pending: funCall[] = []) {
+  let queue = [...pA.funQueue, ...pending];
+  pA.funQueue = [];
+
+  while (queue.length > 0) {
+    let progressed = false;
+    const deferred: funCall[] = [];
+
+    queue.forEach((value) => {
+      if (shouldDeferFunCall(value, pA)) {
+        debugLog(pA, 'funstack', 1, `defer until target bulb known: ${value[0].name}(${value[1]})`);
+        deferred.push(value);
+        return;
+      }
+
+      progressed = true;
+      debugLog(pA, 'funstack', 1, `apply: ${value[0].name}(${value[1]})`);
+      value[0](value[1], pA);
+    });
+
+    if (!progressed) {
+      pA.funQueue.push(...deferred);
+      break;
+    }
+
+    queue = deferred;
+  }
+}
+
 function logCapabilitySummary(pA: BigAssFans_i6PlatformAccessory) {
   const detected: string[] = [];
   const exposed: string[] = [];
@@ -3437,6 +3461,7 @@ export const __test__ = {
   buildStandbyLEDColorMessage,
   fanOnState,
   fanRotationSpeed,
+  flushFunQueue,
   getVarint,
   networkSetup,
   onData,

@@ -47,6 +47,7 @@ function createTestAccessoryState() {
       chunkFragment: Buffer.alloc(0),
       funQueue: [],
       targetBulb: -1,
+      bulbCount: 0,
       capabilitiesEstablished: false,
       uptimeMinutes: 0,
       enableDebugPort: false,
@@ -138,6 +139,23 @@ function testAutoModeStateSync() {
   __test__.fanRotationSpeed('0', state as never);
   assert.equal(state.fanStates.Active, 1);
   assert.equal(state.fanStates.CurrentFanState, 1);
+}
+
+function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
+  const { state } = createTestAccessoryState();
+  state.capabilitiesEstablished = true;
+  state.targetBulb = -1;
+  state.bulbCount = 0;
+
+  __test__.flushFunQueue(state as never, [
+    [__test__.fanOnState, '1'],
+    [__test__.fanRotationSpeed, '3'],
+  ] as never);
+
+  assert.equal(state.fanStates.Active, 1);
+  assert.equal(state.fanStates.CurrentFanState, 2);
+  assert.equal(state.fanStates.RotationSpeed, 3);
+  assert.equal(state.funQueue.length, 0);
 }
 
 async function testReconnectOnClose() {
@@ -239,6 +257,7 @@ async function main() {
   testStandbyLEDColorMessageUsesVarints();
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
+  testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

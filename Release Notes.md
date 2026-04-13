@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.5
+
+**State Sync**
+- Fixed fan-only and `noLights` configurations so inbound fan updates are no longer blocked waiting for a light target selector message.
+- External fan changes from the Big Ass Fans app now propagate back into HomeKit correctly even when the accessory has no light services.
+- Added regression coverage for fan state dispatch when `targetBulb` is unknown.
+
+---
+
 ### v1.1.4
 
 **State Sync**
