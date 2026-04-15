@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.10
+
+**HomeKit Control**
+- Fixed HomeKit fan speed changes while Big Ass Fans auto mode is active by explicitly switching the fan to manual mode before sending the requested speed.
+- This prevents the next fan refresh from snapping the Home app slider back to the externally managed auto-mode speed.
+- Added regression coverage for the auto-to-manual speed-control transition.
+
+---
+
 ### v1.1.9
 
 **HomeKit Compatibility**

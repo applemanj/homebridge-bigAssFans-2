@@ -540,22 +540,40 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
+    const requestedPercent = value as number;
+    if (this.fanStates.TargetFanState === 1) {
+      const activeForManualMode = requestedPercent === 0 ? 0 : 1;
+      debugLog(this, ['characteristics', 'newcode'], [3, 1],
+        'Set Characteristic RotationSpeed while auto mode is enabled -> switching fan to manual mode first');
+      this.fanStates.TargetFanState = 0;
+      this.fanStates.Active = activeForManualMode;
+      this.fanStates.CurrentFanState = activeForManualMode === 1 ? 2 : 0;
+      this.fanService.updateCharacteristic(this.platform.Characteristic.TargetFanState, this.fanStates.TargetFanState);
+      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
+      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
+      if (this.showFanAutoSwitch) {
+        this.fanAutoSwitchOn = false;
+        this.fanAutoSwitchService.updateCharacteristic(this.platform.Characteristic.On, this.fanAutoSwitchOn);
+      }
+      clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, activeForManualMode]), this);
+    }
+
     let b: number[];
-    if (value === 0) {
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
+    if (requestedPercent === 0) {
+      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
       this.fanStates.homeShieldUp = true;
       this.fanStates.RotationSpeed = 0;
       const b1 = ONEBYTEHEADER.concat([0xf0, 0x02, 1]); // this one is for the device's memory
       const b2 = ONEBYTEHEADER.concat([0xf0, 0x02, 0]); // this one will actually stop rotation
       b = b1.concat(b2);
-    } else if (value === 100 && this.fanStates.homeShieldUp) {
+    } else if (requestedPercent === 100 && this.fanStates.homeShieldUp) {
       this.fanStates.homeShieldUp = false;
       this.fanStates.RotationSpeed = 1;
       b = ONEBYTEHEADER.concat([0xf0, 0x02, 1]);
     } else {
       this.fanStates.homeShieldUp = false;
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
-      this.fanStates.RotationSpeed = Math.round(((value as number) / 100) * MAXFANSPEED);
+      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
+      this.fanStates.RotationSpeed = Math.round((requestedPercent / 100) * MAXFANSPEED);
       if (this.fanStates.RotationSpeed > MAXFANSPEED) {
         this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': '
           + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
@@ -3512,6 +3530,12 @@ export const __test__ = {
   fanRotationSpeed,
   flushFunQueue,
   getVarint,
+  async invokeSetRotationSpeed(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
+    return BigAssFans_i6PlatformAccessory.prototype.setRotationSpeed.call(
+      pA as BigAssFans_i6PlatformAccessory,
+      value,
+    );
+  },
   networkSetup,
   onData,
   reconcileCapabilities,

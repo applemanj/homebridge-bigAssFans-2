@@ -80,6 +80,8 @@ function createTestAccessoryState() {
         homeShieldUp: false,
       },
       debugLevels: {
+        characteristics: 0,
+        newcode: 0,
         network: 0,
         reconnect: 0,
         progress: 0,
@@ -110,6 +112,12 @@ function createTestAccessoryState() {
       fanService: {
         updates: [] as Array<{ characteristic: string; value: number }>,
         updateCharacteristic(characteristic: string, value: number) {
+          this.updates.push({ characteristic, value });
+        },
+      },
+      fanAutoSwitchService: {
+        updates: [] as Array<{ characteristic: string; value: boolean }>,
+        updateCharacteristic(characteristic: string, value: boolean) {
           this.updates.push({ characteristic, value });
         },
       },
@@ -165,6 +173,25 @@ function testAutoModeStateSync() {
 function testRotationSpeedPercentAllowsZero() {
   assert.equal(__test__.rotationSpeedPercent(0), 0);
   assert.equal(__test__.rotationSpeedPercent(1), 14);
+}
+
+async function testManualSpeedChangeExitsAutoMode() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.fanStates.TargetFanState = 1;
+  state.fanStates.Active = 0;
+  state.fanStates.CurrentFanState = 0;
+  state.fanStates.RotationSpeed = 0;
+
+  await __test__.invokeSetRotationSpeed(state as never, 57);
+
+  assert.equal(state.fanStates.TargetFanState, 0);
+  assert.equal(state.fanStates.Active, 1);
+  assert.equal(state.fanStates.CurrentFanState, 2);
+  assert.equal(socket.writes.length, 2);
+  assert.match(socket.writes[0].toString('hex'), /d80201/);
+  assert.match(socket.writes[1].toString('hex'), /f00204/);
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -310,6 +337,7 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
+  await testManualSpeedChangeExitsAutoMode();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();
