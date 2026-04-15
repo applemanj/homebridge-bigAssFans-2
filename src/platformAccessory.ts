@@ -12,9 +12,6 @@ const TARGETLIGHT_BOTH = 0;
 const TARGETLIGHT_DOWN = 1;
 const TARGETLIGHT_UP = 2;
 let connectSocket: typeof net.connect = net.connect;
-let scheduleTimeout: typeof setTimeout = setTimeout;
-const AUTO_TO_MANUAL_SPEED_DELAY_MS = 250;
-const CLIENT_WRITE_GAP_MS = 100;
 
 interface lightStates {
   On: boolean;
@@ -144,11 +141,6 @@ export class BigAssFans_i6PlatformAccessory {
     homeShieldUp: false,  // used to prevent Home.app from turning fan on at 100% when it's at zero percent.
   };
 
-  // Track expected speed to prevent network updates from overwriting recent commands
-  public expectedRotationSpeed: number | undefined = undefined;
-  public expectedRotationSpeedTimestamp = 0;
-  public readonly EXPECTED_STATE_TIMEOUT_MS = 2000;  // Allow network update after 2 seconds
-
   public fanOccupancyDetected = false;
   public lightOccupancyDetected = false;
 
@@ -210,9 +202,6 @@ export class BigAssFans_i6PlatformAccessory {
   public targetBulb = -1;
   public client: net.Socket | undefined;
   public oneByteHeaders:number[] = [];
-  public pendingClientWrites: number[][] = [];
-  public isDrainingClientWrites = false;
-  public clientWriteDelayTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // to keep track of when they change - for hints to eventually figure out what they mean
   mysteryProperties: Record<string, string | number> = {};
@@ -551,42 +540,22 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
-    const requestedPercent = value as number;
-    let delaySpeedWrite = false;
-    if (this.fanStates.TargetFanState === 1) {
-      const activeForManualMode = requestedPercent === 0 ? 0 : 1;
-      debugLog(this, ['characteristics', 'newcode'], [3, 1],
-        'Set Characteristic RotationSpeed while auto mode is enabled -> switching fan to manual mode first');
-      this.fanStates.TargetFanState = 0;
-      this.fanStates.Active = activeForManualMode;
-      this.fanStates.CurrentFanState = activeForManualMode === 1 ? 2 : 0;
-      this.fanService.updateCharacteristic(this.platform.Characteristic.TargetFanState, this.fanStates.TargetFanState);
-      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
-      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
-      if (this.showFanAutoSwitch) {
-        this.fanAutoSwitchOn = false;
-        this.fanAutoSwitchService.updateCharacteristic(this.platform.Characteristic.On, this.fanAutoSwitchOn);
-      }
-      clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, activeForManualMode]), this);
-      delaySpeedWrite = true;
-    }
-
     let b: number[];
-    if (requestedPercent === 0) {
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
+    if (value === 0) {
+      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
       this.fanStates.homeShieldUp = true;
       this.fanStates.RotationSpeed = 0;
       const b1 = ONEBYTEHEADER.concat([0xf0, 0x02, 1]); // this one is for the device's memory
       const b2 = ONEBYTEHEADER.concat([0xf0, 0x02, 0]); // this one will actually stop rotation
       b = b1.concat(b2);
-    } else if (requestedPercent === 100 && this.fanStates.homeShieldUp) {
+    } else if (value === 100 && this.fanStates.homeShieldUp) {
       this.fanStates.homeShieldUp = false;
       this.fanStates.RotationSpeed = 1;
       b = ONEBYTEHEADER.concat([0xf0, 0x02, 1]);
     } else {
       this.fanStates.homeShieldUp = false;
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
-      this.fanStates.RotationSpeed = Math.round((requestedPercent / 100) * MAXFANSPEED);
+      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + (value as number) + '%');
+      this.fanStates.RotationSpeed = Math.round(((value as number) / 100) * MAXFANSPEED);
       if (this.fanStates.RotationSpeed > MAXFANSPEED) {
         this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': '
           + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
@@ -594,18 +563,7 @@ export class BigAssFans_i6PlatformAccessory {
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
     }
-
-    // Track the expected speed so stale network echoes do not overwrite this command.
-    this.expectedRotationSpeed = this.fanStates.RotationSpeed;
-    this.expectedRotationSpeedTimestamp = Date.now();
-
-    if (delaySpeedWrite) {
-      scheduleTimeout(() => {
-        clientWrite(this.client, b, this);
-      }, AUTO_TO_MANUAL_SPEED_DELAY_MS);
-    } else {
-      clientWrite(this.client, b, this);
-    }
+    clientWrite(this.client, b, this);
   }
 
   async getRotationSpeed(): Promise<CharacteristicValue> {  // get speed as percentage
@@ -907,9 +865,6 @@ export class BigAssFans_i6PlatformAccessory {
       b = b - 1;
     }
     debugLog(this, 'newcode', 1, `setFanSlowerServiceOnState, b: ${b}`);
-    // Track the expected speed so stale network echoes do not overwrite this command.
-    this.expectedRotationSpeed = b;
-    this.expectedRotationSpeedTimestamp = Date.now();
 
     if (b <= 0) {
       fanOnState(String(0), this);
@@ -937,9 +892,6 @@ export class BigAssFans_i6PlatformAccessory {
     if (b > 7) {
       b = 7;
     }
-    // Track the expected speed so stale network echoes do not overwrite this command.
-    this.expectedRotationSpeed = b;
-    this.expectedRotationSpeedTimestamp = Date.now();
 
     fanRotationSpeed(String(b), this);
     this.setRotationSpeed(Math.round((b / MAXFANSPEED) * 100));
@@ -1367,7 +1319,6 @@ function networkSetup(pA: BAF) {
   function scheduleReconnect(errCode: string) {
     const retrySeconds = backOff(errCode, retryCount);
     retryCount++;
-    resetPendingClientWrites(pA);
 
     // destroy old socket to prevent leaked event handlers
     if (pA.client) {
@@ -1877,23 +1828,6 @@ function fanRotationDirection(s: string, pA:BAF) {
 
 function fanRotationSpeed(s: string, pA:BAF) {
   const value = Number(s);
-  const timeSinceExpectedSet = Date.now() - pA.expectedRotationSpeedTimestamp;
-
-  // Ignore short-lived stale echoes so a recent manual command is not immediately undone.
-  if (pA.expectedRotationSpeed !== undefined
-      && value !== pA.expectedRotationSpeed
-      && timeSinceExpectedSet < pA.EXPECTED_STATE_TIMEOUT_MS) {
-    debugLog(pA, ['characteristics', 'newcode'], [2, 1],
-      `ignoring stale speed update: got ${value}, but expecting ${pA.expectedRotationSpeed} ` +
-      `(${timeSinceExpectedSet}ms since command sent)`);
-    return;
-  }
-
-  // Once we observe the commanded speed, or the guard times out, accept later updates normally.
-  if (pA.expectedRotationSpeed !== undefined
-      && (timeSinceExpectedSet >= pA.EXPECTED_STATE_TIMEOUT_MS || value === pA.expectedRotationSpeed)) {
-    pA.expectedRotationSpeed = undefined;
-  }
 
   pA.fanStates.homeShieldUp = false;
   pA.fanStates.RotationSpeed = value;
@@ -2292,58 +2226,24 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   }
 }
 
-function resetPendingClientWrites(pA: BAF) {
-  pA.pendingClientWrites = [];
-  pA.isDrainingClientWrites = false;
-  if (pA.clientWriteDelayTimeout) {
-    clearTimeout(pA.clientWriteDelayTimeout);
-    pA.clientWriteDelayTimeout = undefined;
-  }
-}
-
-function drainClientWriteQueue(pA: BAF) {
-  if (pA.pendingClientWrites.length === 0) {
-    pA.isDrainingClientWrites = false;
-    pA.clientWriteDelayTimeout = undefined;
+/** SLIP-frames and sends a protobuf message to the fan over TCP. */
+function clientWrite(client, b, pA:BAF) {
+  const activeClient = pA.client ?? client;
+  if (!activeClient) {
+    pA.platform.log.warn(`${pA.Name} - clientWrite called without an active socket`);
     return;
   }
-
-  if (!pA.client) {
-    pA.platform.log.warn(`${pA.Name} - dropping queued client writes because no active socket is available`);
-    resetPendingClientWrites(pA);
-    return;
+  if (pA.client !== client) {
+    debugLog(pA, 'network', 6, 'clientWrite called with a stale socket reference; using the current socket instead');
   }
-
-  const b = pA.pendingClientWrites.shift() as number[];
-  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${Buffer.from(b).toString('hex')}`);
+  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${b.toString('hex')}`);
   const stuffedBuffer = stuff(b);
   try  {
     const buffer = Buffer.from([0xc0].concat(stuffedBuffer).concat([0xc0]));
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
-    pA.client.write(buffer);
+    activeClient.write(buffer);
   } catch {
-    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${Buffer.from(b).toString('hex')}) failed`);
-  }
-
-  pA.clientWriteDelayTimeout = scheduleTimeout(() => {
-    pA.clientWriteDelayTimeout = undefined;
-    if (pA.pendingClientWrites.length === 0) {
-      pA.isDrainingClientWrites = false;
-      return;
-    }
-    drainClientWriteQueue(pA);
-  }, CLIENT_WRITE_GAP_MS);
-}
-
-/** SLIP-frames and sends a protobuf message to the fan over TCP. */
-function clientWrite(client, b, pA:BAF) {
-  if (pA.client !== client) {
-    debugLog(pA, 'network', 6, 'clientWrite called with a stale socket reference; using the current socket instead');
-  }
-  pA.pendingClientWrites.push([...b]);
-  if (!pA.isDrainingClientWrites) {
-    pA.isDrainingClientWrites = true;
-    drainClientWriteQueue(pA);
+    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${b.toString('hex')}) failed`);
   }
 }
 
@@ -3623,9 +3523,6 @@ export const __test__ = {
   fanRotationSpeed,
   flushFunQueue,
   getVarint,
-  invokeClientWrite(client: net.Socket | undefined, b: number[], pA: Partial<BigAssFans_i6PlatformAccessory>) {
-    clientWrite(client, b, pA as BigAssFans_i6PlatformAccessory);
-  },
   async invokeSetRotationSpeed(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
     return BigAssFans_i6PlatformAccessory.prototype.setRotationSpeed.call(
       pA as BigAssFans_i6PlatformAccessory,
@@ -3634,7 +3531,6 @@ export const __test__ = {
   },
   networkSetup,
   onData,
-  resetPendingClientWrites,
   reconcileCapabilities,
   rotationSpeedPercent,
   unstuff,
@@ -3642,13 +3538,7 @@ export const __test__ = {
   setConnectSocketForTest(connect: typeof net.connect) {
     connectSocket = connect;
   },
-  setScheduleTimeoutForTest(timeoutFn: typeof setTimeout) {
-    scheduleTimeout = timeoutFn;
-  },
   resetConnectSocketForTest() {
     connectSocket = net.connect;
-  },
-  resetScheduleTimeoutForTest() {
-    scheduleTimeout = setTimeout;
   },
 };

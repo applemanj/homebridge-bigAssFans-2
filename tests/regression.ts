@@ -51,12 +51,6 @@ function createTestAccessoryState() {
       capabilitiesEstablished: false,
       uptimeMinutes: 0,
       enableDebugPort: false,
-      pendingClientWrites: [] as number[][],
-      isDrainingClientWrites: false,
-      clientWriteDelayTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
-      expectedRotationSpeed: undefined as number | undefined,
-      expectedRotationSpeedTimestamp: 0,
-      EXPECTED_STATE_TIMEOUT_MS: 2000,
       fanAutoSwitchOn: false,
       showFanAutoSwitch: false,
       downlightEquipped: undefined as boolean | undefined,
@@ -181,30 +175,7 @@ function testRotationSpeedPercentAllowsZero() {
   assert.equal(__test__.rotationSpeedPercent(1), 14);
 }
 
-function testRecentExpectedSpeedIgnoresStaleUpdate() {
-  const { state } = createTestAccessoryState();
-  const originalDateNow = Date.now;
-
-  state.expectedRotationSpeed = 4;
-  state.expectedRotationSpeedTimestamp = 1000;
-
-  try {
-    Date.now = () => 1500;
-
-    __test__.fanRotationSpeed('2', state as never);
-    assert.equal(state.fanStates.RotationSpeed, 0);
-    assert.equal(state.fanService.updates.length, 0);
-
-    __test__.fanRotationSpeed('4', state as never);
-    assert.equal(state.fanStates.RotationSpeed, 4);
-    assert.equal(state.expectedRotationSpeed, undefined);
-    assert.deepEqual(state.fanService.updates.at(-1), { characteristic: 'CurrentFanState', value: 2 });
-  } finally {
-    Date.now = originalDateNow;
-  }
-}
-
-async function testManualSpeedChangeExitsAutoMode() {
+async function testRotationSpeedChangeSendsSingleWrite() {
   const { state } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
@@ -213,59 +184,11 @@ async function testManualSpeedChangeExitsAutoMode() {
   state.fanStates.CurrentFanState = 0;
   state.fanStates.RotationSpeed = 0;
 
-  __test__.setScheduleTimeoutForTest(((
-    callback: (...args: never[]) => void,
-    _delay?: number,
-    ..._args: never[]
-  ) => {
-    callback();
-    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
-  }) as unknown as typeof setTimeout);
+  await __test__.invokeSetRotationSpeed(state as never, 57);
 
-  try {
-    await __test__.invokeSetRotationSpeed(state as never, 57);
-  } finally {
-    __test__.resetScheduleTimeoutForTest();
-  }
-
-  assert.equal(state.fanStates.TargetFanState, 0);
-  assert.equal(state.fanStates.Active, 1);
-  assert.equal(state.fanStates.CurrentFanState, 2);
-  assert.equal(socket.writes.length, 2);
-  assert.match(socket.writes[0].toString('hex'), /d80201/);
-  assert.match(socket.writes[1].toString('hex'), /f00204/);
-}
-
-function testClientWriteQueueSerializesRapidWrites() {
-  const { state } = createTestAccessoryState();
-  const socket = new FakeSocket();
-  state.client = socket;
-  const pendingTimers: Array<() => void> = [];
-
-  __test__.setScheduleTimeoutForTest(((
-    callback: (...args: never[]) => void,
-    _delay?: number,
-    ..._args: never[]
-  ) => {
-    pendingTimers.push(() => callback());
-    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
-  }) as unknown as typeof setTimeout);
-
-  try {
-    __test__.invokeClientWrite(socket as unknown as never, [0x12, 0x07, 0x12], state as never);
-    __test__.invokeClientWrite(socket as unknown as never, [0x12, 0x08, 0x13], state as never);
-
-    assert.equal(socket.writes.length, 1);
-    assert.equal(state.pendingClientWrites.length, 1);
-
-    pendingTimers.shift()?.();
-
-    assert.equal(socket.writes.length, 2);
-    assert.equal(state.pendingClientWrites.length, 0);
-  } finally {
-    __test__.resetPendingClientWrites(state as never);
-    __test__.resetScheduleTimeoutForTest();
-  }
+  assert.equal(state.fanStates.TargetFanState, 1);
+  assert.equal(socket.writes.length, 1);
+  assert.match(socket.writes[0].toString('hex'), /f00204/);
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -390,15 +313,6 @@ async function testProbeRequestsStateRefresh() {
       return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setInterval>;
     }) as unknown as typeof setInterval);
 
-    __test__.setScheduleTimeoutForTest(((
-      callback: (...args: never[]) => void,
-      _delay?: number,
-      ..._args: never[]
-    ) => {
-      callback();
-      return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout);
-
     __test__.networkSetup(state as never);
     pendingConnectListeners.shift()?.();
     assert.equal(sockets.length, 1);
@@ -409,7 +323,6 @@ async function testProbeRequestsStateRefresh() {
     assert.equal(sockets[0].writes.length, 4);
   } finally {
     __test__.resetConnectSocketForTest();
-    __test__.resetScheduleTimeoutForTest();
     global.setTimeout = originalSetTimeout;
     global.setInterval = originalSetInterval;
   }
@@ -421,9 +334,7 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
-  testRecentExpectedSpeedIgnoresStaleUpdate();
-  await testManualSpeedChangeExitsAutoMode();
-  testClientWriteQueueSerializesRapidWrites();
+  await testRotationSpeedChangeSendsSingleWrite();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

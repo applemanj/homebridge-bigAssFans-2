@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.14
+
+**HomeKit Control**
+- Simplified the HomeKit fan-speed control path by removing the recent auto-to-manual handoff, stale-speed suppression guard, and queued-write delay logic.
+- This intentionally moves the plugin back toward the simpler direct-write behavior from earlier fork releases while keeping the unrelated parser, reconnect, and cache fixes.
+- Added regression coverage for the simplified direct speed-write path.
+
+---
+
 ### v1.1.13
 
 **HomeKit Control**
