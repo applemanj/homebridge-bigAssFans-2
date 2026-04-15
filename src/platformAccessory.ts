@@ -567,10 +567,7 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async getRotationSpeed(): Promise<CharacteristicValue> {  // get speed as percentage
-    let rotationPercent = Math.round((this.fanStates.RotationSpeed / MAXFANSPEED) * 100);
-    if (rotationPercent === 0) {
-      rotationPercent = 1;
-    }
+    const rotationPercent = rotationSpeedPercent(this.fanStates.RotationSpeed);
     debugLog(this, ['characteristics', 'newcode'], [4, 1], 'Get Characteristic RotationSpeed -> ' + rotationPercent + '%');
     return rotationPercent;
   }
@@ -1829,15 +1826,14 @@ function fanRotationDirection(s: string, pA:BAF) {
 
 function fanRotationSpeed(s: string, pA:BAF) {
   const value = Number(s);
-  if (value !== 0) { // don't tell homebridge speed is zero, it only confuses it.  It'll find out it's off in due course.
-    pA.fanStates.homeShieldUp = false;
-    pA.fanStates.RotationSpeed = (value as number);
-    debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'set speed to ' + pA.fanStates.RotationSpeed);
-    // convert to percentage for homekit
-    const speedPercent = Math.round((pA.fanStates.RotationSpeed / MAXFANSPEED) * 100);
-    debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update RotationSpeed: ' + speedPercent + '%');
-    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, speedPercent);
+  pA.fanStates.homeShieldUp = false;
+  pA.fanStates.RotationSpeed = value;
+  debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'set speed to ' + pA.fanStates.RotationSpeed);
+  const speedPercent = rotationSpeedPercent(pA.fanStates.RotationSpeed);
+  debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update RotationSpeed: ' + speedPercent + '%');
+  pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, speedPercent);
 
+  if (value !== 0) {
     if (pA.fanStates.Active === 0) {
       pA.fanStates.Active = 1;
       debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 1 because speed > 0');
@@ -2168,6 +2164,10 @@ function hexFormat(arg) {
     arg = Buffer.from([arg]);
   }
   return arg.toString('hex').replace(/../g, '0x$&, ').trim().slice(0, -1);
+}
+
+function rotationSpeedPercent(speed: number) {
+  return Math.round((speed / MAXFANSPEED) * 100);
 }
 
 function debugLog(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
@@ -3510,6 +3510,7 @@ export const __test__ = {
   networkSetup,
   onData,
   reconcileCapabilities,
+  rotationSpeedPercent,
   unstuff,
   varint_encode,
   setConnectSocketForTest(connect: typeof net.connect) {

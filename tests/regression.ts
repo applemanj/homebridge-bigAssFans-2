@@ -156,8 +156,15 @@ function testAutoModeStateSync() {
   assert.equal(state.fanStates.CurrentFanState, 2);
 
   __test__.fanRotationSpeed('0', state as never);
+  assert.equal(state.fanStates.RotationSpeed, 0);
   assert.equal(state.fanStates.Active, 1);
   assert.equal(state.fanStates.CurrentFanState, 1);
+  assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 0 });
+}
+
+function testRotationSpeedPercentAllowsZero() {
+  assert.equal(__test__.rotationSpeedPercent(0), 0);
+  assert.equal(__test__.rotationSpeedPercent(1), 14);
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -302,6 +309,7 @@ async function main() {
   testStandbyLEDColorMessageUsesVarints();
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
+  testRotationSpeedPercentAllowsZero();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

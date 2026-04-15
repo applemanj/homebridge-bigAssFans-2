@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.6
+## homebridge-bigassfans-2 v1.1.7
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.7**
+- Fixed auto-mode state reporting so fans that are in Big Ass Fans auto mode at speed `0` no longer leave a stale nonzero speed in the Home app.
+- HomeKit `RotationSpeed` now returns to `0%` when the fan reports zero speed, while `Active` / `CurrentFanState` still show the correct idle-in-auto behavior.
+- Added regression coverage for zero-speed rotation updates and percentage mapping.
 
 **v1.1.6**
 - Improved downlight auto-detection compatibility for fans that expose color-temperature control but underreport the primary downlight capability flag.
