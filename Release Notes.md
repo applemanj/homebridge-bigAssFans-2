@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.11
+
+**HomeKit Control**
+- Adjusted the HomeKit manual speed-control path again so the plugin waits briefly after switching the fan out of Big Ass Fans auto mode before sending the requested manual speed.
+- This better mirrors the older “turn auto off, then change speed” flow and is intended to stop the speed slider from snapping back to the externally managed value.
+- Added regression coverage for the delayed auto-to-manual speed transition.
+
+---
+
 ### v1.1.10
 
 **HomeKit Control**

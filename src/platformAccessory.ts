@@ -12,6 +12,8 @@ const TARGETLIGHT_BOTH = 0;
 const TARGETLIGHT_DOWN = 1;
 const TARGETLIGHT_UP = 2;
 let connectSocket: typeof net.connect = net.connect;
+let scheduleTimeout: typeof setTimeout = setTimeout;
+const AUTO_TO_MANUAL_SPEED_DELAY_MS = 250;
 
 interface lightStates {
   On: boolean;
@@ -541,6 +543,7 @@ export class BigAssFans_i6PlatformAccessory {
 
   async setRotationSpeed(value: CharacteristicValue) {
     const requestedPercent = value as number;
+    let delaySpeedWrite = false;
     if (this.fanStates.TargetFanState === 1) {
       const activeForManualMode = requestedPercent === 0 ? 0 : 1;
       debugLog(this, ['characteristics', 'newcode'], [3, 1],
@@ -556,6 +559,7 @@ export class BigAssFans_i6PlatformAccessory {
         this.fanAutoSwitchService.updateCharacteristic(this.platform.Characteristic.On, this.fanAutoSwitchOn);
       }
       clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, activeForManualMode]), this);
+      delaySpeedWrite = true;
     }
 
     let b: number[];
@@ -581,7 +585,13 @@ export class BigAssFans_i6PlatformAccessory {
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
     }
-    clientWrite(this.client, b, this);
+    if (delaySpeedWrite) {
+      scheduleTimeout(() => {
+        clientWrite(this.client, b, this);
+      }, AUTO_TO_MANUAL_SPEED_DELAY_MS);
+    } else {
+      clientWrite(this.client, b, this);
+    }
   }
 
   async getRotationSpeed(): Promise<CharacteristicValue> {  // get speed as percentage
@@ -3545,7 +3555,13 @@ export const __test__ = {
   setConnectSocketForTest(connect: typeof net.connect) {
     connectSocket = connect;
   },
+  setScheduleTimeoutForTest(timeoutFn: typeof setTimeout) {
+    scheduleTimeout = timeoutFn;
+  },
   resetConnectSocketForTest() {
     connectSocket = net.connect;
+  },
+  resetScheduleTimeoutForTest() {
+    scheduleTimeout = setTimeout;
   },
 };

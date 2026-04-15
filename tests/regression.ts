@@ -184,7 +184,20 @@ async function testManualSpeedChangeExitsAutoMode() {
   state.fanStates.CurrentFanState = 0;
   state.fanStates.RotationSpeed = 0;
 
-  await __test__.invokeSetRotationSpeed(state as never, 57);
+  __test__.setScheduleTimeoutForTest(((
+    callback: (...args: never[]) => void,
+    _delay?: number,
+    ..._args: never[]
+  ) => {
+    callback();
+    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+  }) as unknown as typeof setTimeout);
+
+  try {
+    await __test__.invokeSetRotationSpeed(state as never, 57);
+  } finally {
+    __test__.resetScheduleTimeoutForTest();
+  }
 
   assert.equal(state.fanStates.TargetFanState, 0);
   assert.equal(state.fanStates.Active, 1);
