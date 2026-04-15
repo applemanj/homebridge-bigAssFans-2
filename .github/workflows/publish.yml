@@ -60,17 +60,8 @@ jobs:
           fi
 
       - name: Publish package
-        if: steps.npm.outputs.published != 'true' && secrets.NPM_TOKEN != ''
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Fail if NPM token is missing
-        if: steps.npm.outputs.published != 'true' && secrets.NPM_TOKEN == ''
-        run: |
-          echo "NPM_TOKEN repository secret is not configured."
-          echo "Create an npm automation token and store it as GitHub secret NPM_TOKEN."
-          exit 1
+        if: steps.npm.outputs.published != 'true'
+        run: npm publish --access public
 
       - name: Skip publish for existing version
         if: steps.npm.outputs.published == 'true'
