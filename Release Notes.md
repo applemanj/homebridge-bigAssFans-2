@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.8
+
+**State Sync**
+- Reissued the zero-speed auto-mode state sync fix under a new npm version so the latest release can be published cleanly.
+- Fans running in Big Ass Fans auto mode at speed `0` now report `RotationSpeed = 0%` in HomeKit instead of leaving a stale nonzero percentage behind.
+- `Active` / `CurrentFanState` continue to reflect the correct auto idle state, with regression coverage retained for the zero-speed mapping path.
+
+---
+
 ### v1.1.7
 
 **State Sync**
