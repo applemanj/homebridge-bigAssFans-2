@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.6
+
+**Light Detection**
+- Improved downlight auto-detection compatibility for fans that expose color-temperature control but underreport the primary downlight capability flag.
+- Downlight services now refresh correctly if capability information improves after the initial startup message.
+- Added regression coverage for downlight inference and override precedence.
+
+---
+
 ### v1.1.5
 
 **State Sync**

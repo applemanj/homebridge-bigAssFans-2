@@ -53,6 +53,24 @@ function createTestAccessoryState() {
       enableDebugPort: false,
       fanAutoSwitchOn: false,
       showFanAutoSwitch: false,
+      downlightEquipped: undefined as boolean | undefined,
+      uplightEquipped: undefined as boolean | undefined,
+      capabilities: {
+        hasTempSensor: false,
+        hasHumiditySensor: false,
+        hasOccupancySensor: false,
+        hasLight: false,
+        hasLightSensor: false,
+        hasColorTempControl: false,
+        hasFan: true,
+        hasSpeaker: false,
+        hasPiezo: false,
+        hasLEDIndicators: false,
+        hasUplight: false,
+        hasUVCLight: false,
+        hasStandbyLED: false,
+        hasEcoMode: false,
+      },
       fanStates: {
         Active: 0,
         CurrentFanState: 0,
@@ -73,6 +91,7 @@ function createTestAccessoryState() {
       },
       lastDebugMessage: '',
       lastDebugMessageTag: '',
+      messagesLogged: new Set<string>(),
       platform: {
         Characteristic: {
           Active: 'Active',
@@ -156,6 +175,32 @@ function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
   assert.equal(state.fanStates.CurrentFanState, 2);
   assert.equal(state.fanStates.RotationSpeed, 3);
   assert.equal(state.funQueue.length, 0);
+}
+
+function testColorTemperatureCapabilityImpliesDownlight() {
+  const { state, infos } = createTestAccessoryState();
+  state.capabilities.hasFan = false;
+  state.capabilities.hasColorTempControl = true;
+  const previousCapabilities = { ...state.capabilities };
+
+  const changed = __test__.reconcileCapabilities(state as never, previousCapabilities as never);
+
+  assert.equal(changed, true);
+  assert.equal(state.capabilities.hasLight, true);
+  assert.match(infos[0], /inferring downlight presence from color temperature capability/i);
+}
+
+function testDownlightOverrideWinsOverInference() {
+  const { state, infos } = createTestAccessoryState();
+  state.capabilities.hasColorTempControl = true;
+  state.downlightEquipped = false;
+  const previousCapabilities = { ...state.capabilities };
+
+  const changed = __test__.reconcileCapabilities(state as never, previousCapabilities as never);
+
+  assert.equal(changed, false);
+  assert.equal(state.capabilities.hasLight, false);
+  assert.equal(infos.length, 0);
 }
 
 async function testReconnectOnClose() {
@@ -258,6 +303,8 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
+  testColorTemperatureCapabilityImpliesDownlight();
+  testDownlightOverrideWinsOverInference();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

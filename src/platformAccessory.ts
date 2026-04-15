@@ -47,6 +47,23 @@ interface Capabilities {
   hasEcoMode : boolean;
 }
 
+const capabilityKeys: Array<keyof Capabilities> = [
+  'hasTempSensor',
+  'hasHumiditySensor',
+  'hasOccupancySensor',
+  'hasLight',
+  'hasLightSensor',
+  'hasColorTempControl',
+  'hasFan',
+  'hasSpeaker',
+  'hasPiezo',
+  'hasLEDIndicators',
+  'hasUplight',
+  'hasUVCLight',
+  'hasStandbyLED',
+  'hasEcoMode',
+];
+
 /**
  * Accessory handler for a single Big Ass Fans i6/es6/Haiku ceiling fan.
  *
@@ -921,6 +938,7 @@ function makeStandbyLED(pA: BAF) {
 function makeServices(pA: BAF) {
   const capitalizeName = pA.Name[0] === pA.Name[0].toUpperCase();
   let accessoryName:string;
+  pA.bulbCount = 0;
 
   pA.accessory.getService(pA.platform.Service.AccessoryInformation)!
     .setCharacteristic(pA.platform.Characteristic.Manufacturer, 'Big Ass Fans')
@@ -2573,6 +2591,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
               case 17: { // capabilities (including light pressence)
                 [b, length] = getVarint(b);
                 const remainingLength = getDelimitedMessageEnd(b, length, 'field 17 capabilities message');
+                const previousCapabilities = cloneCapabilities(pA.capabilities);
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -2640,27 +2659,16 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                       break;
                   }
                 }
-                if (pA.downlightEquipped !== undefined) {
-                  if (pA.capabilities.hasLight !== pA.downlightEquipped) {
-                    const str = `downlight presence overriden by user configuration ("downlightEquipped": ${pA.downlightEquipped})`;
-                    pA.capabilities.hasLight = pA.downlightEquipped === true ? true : false;
-                    debugLog(pA, 'light', 1, str);
-                    infoLogOnce(pA, str);
-                  }
-                }
-                if (pA.uplightEquipped !== undefined) {
-                  if (pA.capabilities.hasUplight !== pA.uplightEquipped) {
-                    const str = `uplight presence overriden by user configuration ("uplightEquipped": ${pA.uplightEquipped})`;
-                    pA.capabilities.hasUplight = pA.uplightEquipped === true ? true : false;
-                    debugLog(pA, 'light', 1, str);
-                    infoLogOnce(pA, str);
-                  }
-                }
+                const capabilitiesChanged = reconcileCapabilities(pA, previousCapabilities);
 
                 if (!pA.capabilitiesEstablished) {
                   pA.capabilitiesEstablished = true;
                   debugLog(pA, 'progress', 1, 'capabilities established');
                   logCapabilities(pA);
+                  makeServices(pA);
+                  logCapabilitySummary(pA);
+                } else if (capabilitiesChanged) {
+                  debugLog(pA, 'progress', 1, 'capabilities changed after initial service creation, refreshing services');
                   makeServices(pA);
                   logCapabilitySummary(pA);
                 }
@@ -3239,6 +3247,42 @@ function logCapabilities(pA:BigAssFans_i6PlatformAccessory) {
   }
 }
 
+function cloneCapabilities(capabilities: Capabilities): Capabilities {
+  return { ...capabilities };
+}
+
+function capabilitiesChanged(previousCapabilities: Capabilities, currentCapabilities: Capabilities) {
+  return capabilityKeys.some((key) => previousCapabilities[key] !== currentCapabilities[key]);
+}
+
+function reconcileCapabilities(pA: BAF, previousCapabilities: Capabilities) {
+  if (pA.downlightEquipped === undefined && !pA.capabilities.hasLight && pA.capabilities.hasColorTempControl) {
+    const str = 'inferring downlight presence from color temperature capability';
+    pA.capabilities.hasLight = true;
+    debugLog(pA, 'light', 1, str);
+    infoLogOnce(pA, str);
+  }
+
+  if (pA.downlightEquipped !== undefined) {
+    if (pA.capabilities.hasLight !== pA.downlightEquipped) {
+      const str = `downlight presence overriden by user configuration ("downlightEquipped": ${pA.downlightEquipped})`;
+      pA.capabilities.hasLight = pA.downlightEquipped === true ? true : false;
+      debugLog(pA, 'light', 1, str);
+      infoLogOnce(pA, str);
+    }
+  }
+  if (pA.uplightEquipped !== undefined) {
+    if (pA.capabilities.hasUplight !== pA.uplightEquipped) {
+      const str = `uplight presence overriden by user configuration ("uplightEquipped": ${pA.uplightEquipped})`;
+      pA.capabilities.hasUplight = pA.uplightEquipped === true ? true : false;
+      debugLog(pA, 'light', 1, str);
+      infoLogOnce(pA, str);
+    }
+  }
+
+  return capabilitiesChanged(previousCapabilities, pA.capabilities);
+}
+
 function shouldDeferFunCall([handler]: funCall, pA: BAF) {
   if (pA.targetBulb !== -1 || pA.bulbCount < 2) {
     return false;
@@ -3465,6 +3509,7 @@ export const __test__ = {
   getVarint,
   networkSetup,
   onData,
+  reconcileCapabilities,
   unstuff,
   varint_encode,
   setConnectSocketForTest(connect: typeof net.connect) {
