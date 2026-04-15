@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.12
+## homebridge-bigassfans-2 v1.1.13
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.13**
+- Added a short-lived expected-speed guard so a stale inbound fan update does not immediately overwrite a speed change that HomeKit just sent.
+- The guard automatically clears once the commanded speed is observed, so normal follow-up state updates continue flowing right away.
+- Added regression coverage for the stale-update suppression path.
 
 **v1.1.12**
 - Added a small per-fan outbound command queue so repeated HomeKit commands are serialized with a short gap instead of being blasted to the fan back-to-back.

@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.13
+
+**HomeKit Control**
+- Added a short-lived expected-speed guard so stale inbound fan updates do not immediately overwrite a speed change that HomeKit just sent.
+- Clear that guard as soon as the commanded speed is observed so normal follow-up state changes keep flowing without waiting for the full timeout.
+- Added regression coverage for the stale-update suppression path.
+
+---
+
 ### v1.1.12
 
 **HomeKit Control**

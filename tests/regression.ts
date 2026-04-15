@@ -54,6 +54,9 @@ function createTestAccessoryState() {
       pendingClientWrites: [] as number[][],
       isDrainingClientWrites: false,
       clientWriteDelayTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
+      expectedRotationSpeed: undefined as number | undefined,
+      expectedRotationSpeedTimestamp: 0,
+      EXPECTED_STATE_TIMEOUT_MS: 2000,
       fanAutoSwitchOn: false,
       showFanAutoSwitch: false,
       downlightEquipped: undefined as boolean | undefined,
@@ -176,6 +179,29 @@ function testAutoModeStateSync() {
 function testRotationSpeedPercentAllowsZero() {
   assert.equal(__test__.rotationSpeedPercent(0), 0);
   assert.equal(__test__.rotationSpeedPercent(1), 14);
+}
+
+function testRecentExpectedSpeedIgnoresStaleUpdate() {
+  const { state } = createTestAccessoryState();
+  const originalDateNow = Date.now;
+
+  state.expectedRotationSpeed = 4;
+  state.expectedRotationSpeedTimestamp = 1000;
+
+  try {
+    Date.now = () => 1500;
+
+    __test__.fanRotationSpeed('2', state as never);
+    assert.equal(state.fanStates.RotationSpeed, 0);
+    assert.equal(state.fanService.updates.length, 0);
+
+    __test__.fanRotationSpeed('4', state as never);
+    assert.equal(state.fanStates.RotationSpeed, 4);
+    assert.equal(state.expectedRotationSpeed, undefined);
+    assert.deepEqual(state.fanService.updates.at(-1), { characteristic: 'CurrentFanState', value: 2 });
+  } finally {
+    Date.now = originalDateNow;
+  }
 }
 
 async function testManualSpeedChangeExitsAutoMode() {
@@ -395,6 +421,7 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
+  testRecentExpectedSpeedIgnoresStaleUpdate();
   await testManualSpeedChangeExitsAutoMode();
   testClientWriteQueueSerializesRapidWrites();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();

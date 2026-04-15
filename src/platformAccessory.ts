@@ -144,6 +144,11 @@ export class BigAssFans_i6PlatformAccessory {
     homeShieldUp: false,  // used to prevent Home.app from turning fan on at 100% when it's at zero percent.
   };
 
+  // Track expected speed to prevent network updates from overwriting recent commands
+  public expectedRotationSpeed: number | undefined = undefined;
+  public expectedRotationSpeedTimestamp = 0;
+  public readonly EXPECTED_STATE_TIMEOUT_MS = 2000;  // Allow network update after 2 seconds
+
   public fanOccupancyDetected = false;
   public lightOccupancyDetected = false;
 
@@ -589,6 +594,11 @@ export class BigAssFans_i6PlatformAccessory {
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
     }
+
+    // Track the expected speed so stale network echoes do not overwrite this command.
+    this.expectedRotationSpeed = this.fanStates.RotationSpeed;
+    this.expectedRotationSpeedTimestamp = Date.now();
+
     if (delaySpeedWrite) {
       scheduleTimeout(() => {
         clientWrite(this.client, b, this);
@@ -897,6 +907,10 @@ export class BigAssFans_i6PlatformAccessory {
       b = b - 1;
     }
     debugLog(this, 'newcode', 1, `setFanSlowerServiceOnState, b: ${b}`);
+    // Track the expected speed so stale network echoes do not overwrite this command.
+    this.expectedRotationSpeed = b;
+    this.expectedRotationSpeedTimestamp = Date.now();
+
     if (b <= 0) {
       fanOnState(String(0), this);
       this.setFanActive(0);
@@ -923,6 +937,10 @@ export class BigAssFans_i6PlatformAccessory {
     if (b > 7) {
       b = 7;
     }
+    // Track the expected speed so stale network echoes do not overwrite this command.
+    this.expectedRotationSpeed = b;
+    this.expectedRotationSpeedTimestamp = Date.now();
+
     fanRotationSpeed(String(b), this);
     this.setRotationSpeed(Math.round((b / MAXFANSPEED) * 100));
     fanOnState(String(1), this);
@@ -1859,6 +1877,24 @@ function fanRotationDirection(s: string, pA:BAF) {
 
 function fanRotationSpeed(s: string, pA:BAF) {
   const value = Number(s);
+  const timeSinceExpectedSet = Date.now() - pA.expectedRotationSpeedTimestamp;
+
+  // Ignore short-lived stale echoes so a recent manual command is not immediately undone.
+  if (pA.expectedRotationSpeed !== undefined
+      && value !== pA.expectedRotationSpeed
+      && timeSinceExpectedSet < pA.EXPECTED_STATE_TIMEOUT_MS) {
+    debugLog(pA, ['characteristics', 'newcode'], [2, 1],
+      `ignoring stale speed update: got ${value}, but expecting ${pA.expectedRotationSpeed} ` +
+      `(${timeSinceExpectedSet}ms since command sent)`);
+    return;
+  }
+
+  // Once we observe the commanded speed, or the guard times out, accept later updates normally.
+  if (pA.expectedRotationSpeed !== undefined
+      && (timeSinceExpectedSet >= pA.EXPECTED_STATE_TIMEOUT_MS || value === pA.expectedRotationSpeed)) {
+    pA.expectedRotationSpeed = undefined;
+  }
+
   pA.fanStates.homeShieldUp = false;
   pA.fanStates.RotationSpeed = value;
   debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'set speed to ' + pA.fanStates.RotationSpeed);
