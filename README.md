@@ -187,7 +187,7 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 - `noLights` if you want to hide all lighting services
 - `disableDirectionControl` if you want to hide reverse control
 - `showTemperature` or `showHumidity` if you want to override the default sensor exposure behavior
-- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan
+- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan; omit these fields to use autodetection
 
 ### Configuration Fields
 
@@ -219,8 +219,8 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 | `noLights` | `false` | Hide all light controls |
 | `showHumidity` | `true` | Expose humidity sensor |
 | `showTemperature` | `true` | Expose temperature sensor |
-| `downlightEquipped` | auto | Override downlight detection (`true`/`false`) |
-| `uplightEquipped` | auto | Override uplight detection (`true`/`false`) |
+| `downlightEquipped` | auto | Override downlight detection with `true` or `false`; omit the field to use autodetection |
+| `uplightEquipped` | auto | Override uplight detection with `true` or `false`; omit the field to use autodetection |
 | `showFanOccupancySensor` | `false` | Expose fan occupancy sensor |
 | `showLightOccupancySensor` | `false` | Expose light occupancy sensor |
 | `showStandbyLED` | `false` | Expose night light / standby LED controls |
