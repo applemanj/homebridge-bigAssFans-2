@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.9
+
+**HomeKit Compatibility**
+- Adjusted the auto-mode idle mapping so fans in Big Ass Fans auto mode at speed `0` are reported to HomeKit as inactive instead of active at `0%`.
+- This avoids the Home app control path that could leave the accessory in a `Not Responding` state after the earlier zero-speed sync changes.
+- `TargetFanState` still remains `Auto`, so the fan stays in automatic mode while HomeKit sees a safer inactive current state.
+
+---
+
 ### v1.1.8
 
 **State Sync**

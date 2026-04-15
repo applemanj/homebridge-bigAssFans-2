@@ -1783,7 +1783,7 @@ function fanOnState(s: string, pA:BAF) {
     pA.fanAutoSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.fanAutoSwitchOn);
   }
 
-  const activeValue = (value === 0 ? 0 : 1);
+  const activeValue = (value === 0 || (isAuto && pA.fanStates.RotationSpeed === 0) ? 0 : 1);
   pA.fanStates.Active = activeValue;
 
   if (activeValue === 0) {
@@ -1843,10 +1843,15 @@ function fanRotationSpeed(s: string, pA:BAF) {
     pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
   } else {
     if (pA.fanStates.TargetFanState === 1) {
-      // Auto mode with zero speed should remain Active but show Idle.
-      pA.fanStates.Active = 1;
-      pA.fanStates.CurrentFanState = 1; // Idle
-      debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan State: Active=1, CurrentFanState=Idle because auto mode speed == 0');
+      // Auto mode with zero speed should appear inactive while preserving TargetFanState=Auto.
+      pA.fanStates.Active = 0;
+      pA.fanStates.CurrentFanState = 0; // Inactive
+      debugLog(
+        pA,
+        ['characteristics', 'newcode'],
+        [3, 1],
+        'update Fan State: Active=0, CurrentFanState=Inactive because auto mode speed == 0',
+      );
       pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
       pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
     } else if (pA.fanStates.Active === 1) {

@@ -148,8 +148,8 @@ function testAutoModeStateSync() {
 
   __test__.fanOnState('2', state as never);
   assert.equal(state.fanStates.TargetFanState, 1);
-  assert.equal(state.fanStates.Active, 1);
-  assert.equal(state.fanStates.CurrentFanState, 1);
+  assert.equal(state.fanStates.Active, 0);
+  assert.equal(state.fanStates.CurrentFanState, 0);
 
   __test__.fanRotationSpeed('3', state as never);
   assert.equal(state.fanStates.Active, 1);
@@ -157,8 +157,8 @@ function testAutoModeStateSync() {
 
   __test__.fanRotationSpeed('0', state as never);
   assert.equal(state.fanStates.RotationSpeed, 0);
-  assert.equal(state.fanStates.Active, 1);
-  assert.equal(state.fanStates.CurrentFanState, 1);
+  assert.equal(state.fanStates.Active, 0);
+  assert.equal(state.fanStates.CurrentFanState, 0);
   assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 0 });
 }
 

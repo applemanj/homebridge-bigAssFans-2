@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.8
+## homebridge-bigassfans-2 v1.1.9
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.9**
+- Adjusted the auto-mode idle mapping so fans in Big Ass Fans auto mode at speed `0` are reported to HomeKit as inactive instead of active at `0%`.
+- This avoids the Home app control path that could leave the accessory in a `Not Responding` state after the earlier zero-speed sync changes.
+- `TargetFanState` still remains `Auto`, so the fan stays in automatic mode while HomeKit sees a safer inactive current state.
 
 **v1.1.8**
 - Reissued the zero-speed auto-mode state sync fix under a new npm version so the latest release can be published cleanly.
