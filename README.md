@@ -316,8 +316,10 @@ State changes made outside HomeKit, such as turning a fan on in the Big Ass Fans
 
 5. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
 
-6. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
-7. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port now listens on `127.0.0.1` only.
+6. **If HomeKit shows stale state, `No Response`, or ignores control changes while the plugin logs still look healthy, reboot your Home Hubs** (Apple TV / HomePod). In testing, hub-side issues can mimic plugin control failures even when the fan connection and state polling are working normally.
+
+7. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
+8. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port listens on `127.0.0.1` only, and you will usually want to turn it back off after debugging.
 
 ### Tips
 
