@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.12
+
+**HomeKit Control**
+- Added a small per-fan outbound command queue so repeated HomeKit commands are serialized with a short gap instead of being blasted to the fan back-to-back.
+- This is intended to reduce command storms that can leave the accessory in a `No Response` state after several rapid HomeKit interactions.
+- Added regression coverage for queued client writes alongside the earlier auto-to-manual speed-control tests.
+
+---
+
 ### v1.1.11
 
 **HomeKit Control**

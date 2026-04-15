@@ -14,6 +14,7 @@ const TARGETLIGHT_UP = 2;
 let connectSocket: typeof net.connect = net.connect;
 let scheduleTimeout: typeof setTimeout = setTimeout;
 const AUTO_TO_MANUAL_SPEED_DELAY_MS = 250;
+const CLIENT_WRITE_GAP_MS = 100;
 
 interface lightStates {
   On: boolean;
@@ -204,6 +205,9 @@ export class BigAssFans_i6PlatformAccessory {
   public targetBulb = -1;
   public client: net.Socket | undefined;
   public oneByteHeaders:number[] = [];
+  public pendingClientWrites: number[][] = [];
+  public isDrainingClientWrites = false;
+  public clientWriteDelayTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // to keep track of when they change - for hints to eventually figure out what they mean
   mysteryProperties: Record<string, string | number> = {};
@@ -1345,6 +1349,7 @@ function networkSetup(pA: BAF) {
   function scheduleReconnect(errCode: string) {
     const retrySeconds = backOff(errCode, retryCount);
     retryCount++;
+    resetPendingClientWrites(pA);
 
     // destroy old socket to prevent leaked event handlers
     if (pA.client) {
@@ -2251,16 +2256,58 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   }
 }
 
-/** SLIP-frames and sends a protobuf message to the fan over TCP. */
-function clientWrite(client, b, pA:BAF) {
-  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${b.toString('hex')}`);
+function resetPendingClientWrites(pA: BAF) {
+  pA.pendingClientWrites = [];
+  pA.isDrainingClientWrites = false;
+  if (pA.clientWriteDelayTimeout) {
+    clearTimeout(pA.clientWriteDelayTimeout);
+    pA.clientWriteDelayTimeout = undefined;
+  }
+}
+
+function drainClientWriteQueue(pA: BAF) {
+  if (pA.pendingClientWrites.length === 0) {
+    pA.isDrainingClientWrites = false;
+    pA.clientWriteDelayTimeout = undefined;
+    return;
+  }
+
+  if (!pA.client) {
+    pA.platform.log.warn(`${pA.Name} - dropping queued client writes because no active socket is available`);
+    resetPendingClientWrites(pA);
+    return;
+  }
+
+  const b = pA.pendingClientWrites.shift() as number[];
+  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${Buffer.from(b).toString('hex')}`);
   const stuffedBuffer = stuff(b);
   try  {
     const buffer = Buffer.from([0xc0].concat(stuffedBuffer).concat([0xc0]));
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
-    client.write(buffer);
+    pA.client.write(buffer);
   } catch {
-    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${b.toString('hex')}) failed`);
+    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${Buffer.from(b).toString('hex')}) failed`);
+  }
+
+  pA.clientWriteDelayTimeout = scheduleTimeout(() => {
+    pA.clientWriteDelayTimeout = undefined;
+    if (pA.pendingClientWrites.length === 0) {
+      pA.isDrainingClientWrites = false;
+      return;
+    }
+    drainClientWriteQueue(pA);
+  }, CLIENT_WRITE_GAP_MS);
+}
+
+/** SLIP-frames and sends a protobuf message to the fan over TCP. */
+function clientWrite(client, b, pA:BAF) {
+  if (pA.client !== client) {
+    debugLog(pA, 'network', 6, 'clientWrite called with a stale socket reference; using the current socket instead');
+  }
+  pA.pendingClientWrites.push([...b]);
+  if (!pA.isDrainingClientWrites) {
+    pA.isDrainingClientWrites = true;
+    drainClientWriteQueue(pA);
   }
 }
 
@@ -3540,6 +3587,9 @@ export const __test__ = {
   fanRotationSpeed,
   flushFunQueue,
   getVarint,
+  invokeClientWrite(client: net.Socket | undefined, b: number[], pA: Partial<BigAssFans_i6PlatformAccessory>) {
+    clientWrite(client, b, pA as BigAssFans_i6PlatformAccessory);
+  },
   async invokeSetRotationSpeed(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
     return BigAssFans_i6PlatformAccessory.prototype.setRotationSpeed.call(
       pA as BigAssFans_i6PlatformAccessory,
@@ -3548,6 +3598,7 @@ export const __test__ = {
   },
   networkSetup,
   onData,
+  resetPendingClientWrites,
   reconcileCapabilities,
   rotationSpeedPercent,
   unstuff,

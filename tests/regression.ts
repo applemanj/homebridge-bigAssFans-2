@@ -51,6 +51,9 @@ function createTestAccessoryState() {
       capabilitiesEstablished: false,
       uptimeMinutes: 0,
       enableDebugPort: false,
+      pendingClientWrites: [] as number[][],
+      isDrainingClientWrites: false,
+      clientWriteDelayTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
       fanAutoSwitchOn: false,
       showFanAutoSwitch: false,
       downlightEquipped: undefined as boolean | undefined,
@@ -207,6 +210,38 @@ async function testManualSpeedChangeExitsAutoMode() {
   assert.match(socket.writes[1].toString('hex'), /f00204/);
 }
 
+function testClientWriteQueueSerializesRapidWrites() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  const pendingTimers: Array<() => void> = [];
+
+  __test__.setScheduleTimeoutForTest(((
+    callback: (...args: never[]) => void,
+    _delay?: number,
+    ..._args: never[]
+  ) => {
+    pendingTimers.push(() => callback());
+    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+  }) as unknown as typeof setTimeout);
+
+  try {
+    __test__.invokeClientWrite(socket as unknown as never, [0x12, 0x07, 0x12], state as never);
+    __test__.invokeClientWrite(socket as unknown as never, [0x12, 0x08, 0x13], state as never);
+
+    assert.equal(socket.writes.length, 1);
+    assert.equal(state.pendingClientWrites.length, 1);
+
+    pendingTimers.shift()?.();
+
+    assert.equal(socket.writes.length, 2);
+    assert.equal(state.pendingClientWrites.length, 0);
+  } finally {
+    __test__.resetPendingClientWrites(state as never);
+    __test__.resetScheduleTimeoutForTest();
+  }
+}
+
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
   const { state } = createTestAccessoryState();
   state.capabilitiesEstablished = true;
@@ -329,6 +364,15 @@ async function testProbeRequestsStateRefresh() {
       return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setInterval>;
     }) as unknown as typeof setInterval);
 
+    __test__.setScheduleTimeoutForTest(((
+      callback: (...args: never[]) => void,
+      _delay?: number,
+      ..._args: never[]
+    ) => {
+      callback();
+      return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
     __test__.networkSetup(state as never);
     pendingConnectListeners.shift()?.();
     assert.equal(sockets.length, 1);
@@ -339,6 +383,7 @@ async function testProbeRequestsStateRefresh() {
     assert.equal(sockets[0].writes.length, 4);
   } finally {
     __test__.resetConnectSocketForTest();
+    __test__.resetScheduleTimeoutForTest();
     global.setTimeout = originalSetTimeout;
     global.setInterval = originalSetInterval;
   }
@@ -351,6 +396,7 @@ async function main() {
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
   await testManualSpeedChangeExitsAutoMode();
+  testClientWriteQueueSerializesRapidWrites();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

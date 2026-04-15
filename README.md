@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.11
+## homebridge-bigassfans-2 v1.1.12
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.12**
+- Added a small per-fan outbound command queue so repeated HomeKit commands are serialized with a short gap instead of being blasted to the fan back-to-back.
+- This is intended to reduce command storms that can leave the accessory in a `No Response` state after several rapid HomeKit interactions.
+- Added regression coverage for queued client writes alongside the earlier auto-to-manual speed-control tests.
 
 **v1.1.11**
 - Adjusted the HomeKit manual speed-control path again so the plugin waits briefly after switching the fan out of Big Ass Fans auto mode before sending the requested manual speed.
