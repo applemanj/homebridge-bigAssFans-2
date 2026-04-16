@@ -1,5 +1,18 @@
 ## Release Notes
 
+### v1.1.15
+
+**Verification / Packaging**
+- Added the explicit `homepage` package metadata expected by the Homebridge verification checks.
+- Updated `config.schema.json` to use proper object-level `required` arrays instead of per-field `required` booleans.
+- Added the top-level platform `name` field to the schema and aligned the README config examples with the Homebridge Settings UI.
+
+**Documentation**
+- Added a troubleshooting note to reboot Home Hubs when the plugin logs look healthy but HomeKit still shows stale state or `No Response`.
+- Clarified that `enableDebugPort` should usually be turned back off after a debugging session.
+
+---
+
 ### v1.1.14
 
 **HomeKit Control**

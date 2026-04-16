@@ -6,33 +6,45 @@
   "footerDisplay": "For details, see the [README](https://github.com/applemanj/homebridge-bigAssFans-2#readme). Whoosh is now native SwingMode in the fan tile. Fan Auto is now native in the fan tile via TargetFanState.",
   "schema": {
     "type": "object",
+    "required": [
+      "name",
+      "fans"
+    ],
     "properties": {
+      "name": {
+        "title": "Platform Name",
+        "description": "Display name for this Homebridge platform instance.",
+        "type": "string",
+        "default": "Big Ass Fans"
+      },
       "fans": {
         "title": "Fans",
         "type": "array",
         "items": {
           "type": "object",
+          "required": [
+            "name",
+            "ip",
+            "mac"
+          ],
           "properties": {
             "name": {
               "title": "Name",
               "description": "Display name for the fan.",
               "type": "string",
               "minLength": 1,
-              "required": true,
               "default": "i6 fan"
             },
             "ip": {
               "title": "Fan IP Address Or Hostname",
               "description": "The IP address or hostname of the fan (supports mDNS .local hostnames).",
               "type": "string",
-              "format": "hostname",
-              "required": true
+              "format": "hostname"
             },
             "mac": {
               "title": "MAC Address",
               "description": "The MAC address of the fan.",
-              "type": "string",
-              "required": true
+              "type": "string"
             },
             "showFanAutoSwitch": {
               "title": "Fan Auto Switch (Legacy)",
