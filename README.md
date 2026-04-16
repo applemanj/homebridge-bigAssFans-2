@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.15
+## homebridge-bigassfans-2 v1.1.16
 
 </span>
 
@@ -37,6 +37,10 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.16**
+- Removed the `homebridge` `peerDependencies` entry so npm no longer auto-installs Homebridge and `hap-nodejs` when the plugin is installed.
+- This matches the current Homebridge verification expectations while keeping the supported Homebridge range in `engines.homebridge`.
 
 **v1.1.15**
 - Added the explicit package `homepage` metadata required by the Homebridge verification checks.

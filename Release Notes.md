@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.16
+
+**Verification / Packaging**
+- Removed the `homebridge` `peerDependencies` entry so npm no longer auto-installs Homebridge during plugin installation.
+- This also prevents `hap-nodejs` from being pulled in through Homebridge as part of the plugin install tree.
+- Kept the supported Homebridge versions declared in `engines.homebridge`, which is what the current Homebridge template and verifier expect.
+
+---
+
 ### v1.1.15
 
 **Verification / Packaging**
