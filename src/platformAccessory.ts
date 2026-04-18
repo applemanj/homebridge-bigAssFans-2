@@ -2,7 +2,7 @@
 
 import * as net from 'net';
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { BigAssFans_i6Platform } from './platform';
+import type { BigAssFansAccessoryContext, BigAssFansPlatformContext } from './types';
 
 const MAXFANSPEED = 7;
 
@@ -162,8 +162,8 @@ export class BigAssFans_i6PlatformAccessory {
   public showStandbyLED = false;
   public standbyLEDEnabledSwitchOn = false;
 
-  public downlightEquipped = undefined;
-  public uplightEquipped = undefined;
+  public downlightEquipped: boolean | undefined = undefined;
+  public uplightEquipped: boolean | undefined = undefined;
 
   public enableIncrementalButtons = false;
   public incrementalButtonsDelay = 500;
@@ -203,9 +203,6 @@ export class BigAssFans_i6PlatformAccessory {
   public client: net.Socket | undefined;
   public oneByteHeaders:number[] = [];
 
-  // to keep track of when they change - for hints to eventually figure out what they mean
-  mysteryProperties: Record<string, string | number> = {};
-
   public chunkFragment: Buffer = Buffer.alloc(0);
   public funQueue: funCall[] = [];
 
@@ -221,12 +218,13 @@ export class BigAssFans_i6PlatformAccessory {
 
   /** Sets up config, debug levels, network connection, and HomeKit services for the fan. */
   constructor(
-    public readonly platform: BigAssFans_i6Platform,
-    public readonly accessory: PlatformAccessory,
+    public readonly platform: BigAssFansPlatformContext,
+    public readonly accessory: PlatformAccessory<BigAssFansAccessoryContext>,
   ) {
-    this.IP = accessory.context.device.ip;
-    this.MAC = accessory.context.device.mac;
-    this.Name = accessory.context.device.name;
+    const device = accessory.context.device;
+    this.IP = device.ip;
+    this.MAC = device.mac;
+    this.Name = device.name;
 
     // defaults and enumeration of debugging keys
     this.debugLevels['capabilities']      = 0;
@@ -246,109 +244,108 @@ export class BigAssFans_i6PlatformAccessory {
     this.debugLevels['reconnect']         = 0;
     this.debugLevels['redflags']          = 0; // 1;
 
-    if (this.accessory.context.device.debugLevels !== undefined) {
-      for (const debugEntry of this.accessory.context.device.debugLevels) {
-        const entry:(string | number)[] = debugEntry as (string | number)[];
-        this.debugLevels[String(entry[0])] = Number(entry[1]);
+    if (device.debugLevels !== undefined) {
+      for (const debugEntry of device.debugLevels) {
+        this.debugLevels[debugEntry[0]] = Number(debugEntry[1]);
       }
     }
 
-    if (accessory.context.device.noLights) {
+    if (device.noLights) {
       this.noLights = true;  // defaults to false in property initialization
     }
 
-    if (accessory.context.device.downlightEquipped !== undefined) {
-      this.downlightEquipped = accessory.context.device.downlightEquipped;
+    if (device.downlightEquipped !== undefined) {
+      this.downlightEquipped = device.downlightEquipped;
     }
-    if (accessory.context.device.uplightEquipped !== undefined) {
-      this.uplightEquipped = accessory.context.device.uplightEquipped;
+    if (device.uplightEquipped !== undefined) {
+      this.uplightEquipped = device.uplightEquipped;
     }
 
-    if (accessory.context.device.whoosh) {
+    if (device.whoosh) {
       this.platform.log.warn(`${this.Name} - use of "whoosh" configuration attribute is deprecated, please use "showWhooshSwitch" instead`);
       this.showWhooshSwitch = true;
     }
-    if (accessory.context.device.showWhooshSwitch) {
+    if (device.showWhooshSwitch) {
       this.showWhooshSwitch = true; // defaults to false in property initialization
     }
 
-    if (accessory.context.device.dimToWarm) {
+    if (device.dimToWarm) {
       this.platform.log.warn(
         `${this.Name} - "dimToWarm" is deprecated, use "showDimToWarmSwitch"`);
       this.showDimToWarmSwitch = true;
     }
-    if (accessory.context.device.showDimToWarmSwitch) {
+    if (device.showDimToWarmSwitch) {
       this.showDimToWarmSwitch = true;
     }
 
-    if (accessory.context.device.fanAuto) {
+    if (device.fanAuto) {
       this.platform.log.warn(
         `${this.Name} - "fanAuto" is deprecated, use "showFanAutoSwitch"`);
       this.showFanAutoSwitch = true;
     }
-    if (accessory.context.device.showFanAutoSwitch) {
+    if (device.showFanAutoSwitch) {
       this.showFanAutoSwitch = true;
     }
 
-    if (accessory.context.device.lightAuto) {
+    if (device.lightAuto) {
       this.platform.log.warn(
         `${this.Name} - "lightAuto" is deprecated, use "showLightAutoSwitch"`);
       this.showLightAutoSwitch = true;
     }
-    if (accessory.context.device.showLightAutoSwitch) {
+    if (device.showLightAutoSwitch) {
       this.showLightAutoSwitch = true;
     }
 
-    if (accessory.context.device.ecoMode) {
+    if (device.ecoMode) {
       this.platform.log.warn(
         `${this.Name} - "ecoMode" is deprecated, use "showEcoModeSwitch"`);
       this.showEcoModeSwitch = true;
     }
-    if (accessory.context.device.showEcoModeSwitch) {
+    if (device.showEcoModeSwitch) {
       this.showEcoModeSwitch = true;  // defaults to false in property initialization
     }
 
-    if (accessory.context.device.enableIncrementalButtons) {
+    if (device.enableIncrementalButtons) {
       this.enableIncrementalButtons = true;  // defaults to false in property initialization
     }
-    if (accessory.context.device.incrementalButtonsDelay) {
-      this.incrementalButtonsDelay = accessory.context.device.incrementalButtonsDelay; // overrides dfault setting
+    if (device.incrementalButtonsDelay) {
+      this.incrementalButtonsDelay = device.incrementalButtonsDelay; // overrides default setting
       debugLog(this, 'light', 1, `incrementalButtonsDelay: ${this.incrementalButtonsDelay}`);
     }
 
-    if (accessory.context.device.probeFrequency !== undefined) {
-      this.ProbeFrequency = accessory.context.device.probeFrequency;
+    if (device.probeFrequency !== undefined) {
+      this.ProbeFrequency = device.probeFrequency;
       debugLog(this, 'progress',  1, 'set ProbeFrequency to: ' + this.ProbeFrequency);
     } else {
       debugLog(this, 'progress',  1, 'ProbeFrequency is set to: ' + this.ProbeFrequency);
     }
 
-    if (accessory.context.device.disableDirectionControl) {
+    if (device.disableDirectionControl) {
       this.disableDirectionControl = true;
     }
 
-    if (accessory.context.device.showFanOccupancySensor) {
+    if (device.showFanOccupancySensor) {
       this.showFanOccupancySensor = true;
     }
 
-    if (accessory.context.device.showLightOccupancySensor) {
+    if (device.showLightOccupancySensor) {
       this.showLightOccupancySensor = true;
     }
 
-    if (accessory.context.device.showStandbyLED) {
+    if (device.showStandbyLED) {
       this.showStandbyLED = true;
     }
 
-    if (accessory.context.device.enableDebugPort) {
+    if (device.enableDebugPort) {
       this.enableDebugPort = true;
     }
 
-    if (accessory.context.device.showTemperature !== undefined) {
-      this.showTemperature = accessory.context.device.showTemperature;
+    if (device.showTemperature !== undefined) {
+      this.showTemperature = device.showTemperature;
     }
 
-    if (accessory.context.device.showHumidity !== undefined) {
-      this.showHumidity = accessory.context.device.showHumidity;
+    if (device.showHumidity !== undefined) {
+      this.showHumidity = device.showHumidity;
     }
 
     /**
@@ -357,8 +354,8 @@ export class BigAssFans_i6PlatformAccessory {
 
     // I've forgotten the point of specifying a model name in the config file (unless it's devModelOverride) but
     // am not ready to delete this code yet.
-    if (this.accessory.context.device.fanModel !== undefined && this.accessory.context.device.fanModel !== 'other') {
-      this.Model = this.accessory.context.device.fanModel;
+    if (device.fanModel !== undefined && device.fanModel !== 'other') {
+      this.Model = device.fanModel;
     }
 
     /**
@@ -725,7 +722,7 @@ export class BigAssFans_i6PlatformAccessory {
     debugLog(this, ['newcode', 'characteristics'], [1, 3], 'Set Characteristic StandbyLED Enabled Switch On -> ' + value);
     this.standbyLEDEnabledSwitchOn = value as boolean;
     clientWrite(this.client,
-      [0x0c, 0x12, 0x09, 0x12, 0x07, 0x1a, 0x05, 0x9a, 0x05, 0x02, 0x10, this.standbyLEDEnabledSwitchOn, 0x0c], this);
+      [0x0c, 0x12, 0x09, 0x12, 0x07, 0x1a, 0x05, 0x9a, 0x05, 0x02, 0x10, (this.standbyLEDEnabledSwitchOn ? 0x01 : 0x00), 0x0c], this);
   }
 
   async getStandbyLEDEnabledSwitchOnState(): Promise<CharacteristicValue> {
@@ -2070,23 +2067,6 @@ function standbyLEDBlue(s: string, pA:BAF) {
   }
 }
 
-// keeping track to gather clues in unending effort to ID unknown codes
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function mysteryCode(value: string, pA:BAF, code: string) {
-  const v = value;
-  const p = pA.mysteryProperties[code];
-
-  if (p !== undefined) {
-    if (p !== v) {
-      debugLog(pA, 'cluing', 3, 'mystery property value: ' + code + ' changed from: ' + p + ', to: ' + v);
-      pA.mysteryProperties[code] = v;
-    }
-  } else {
-    debugLog(pA, 'cluing', 4, 'initial mystery property value: ' + code + ', : ' + v);
-    pA.mysteryProperties[code] = v;
-  }
-}
-
 const ESC = 0xDB;
 const START = 0xc0;
 const ESC_STUFF = 0xDD;
@@ -2167,7 +2147,7 @@ function buildStandbyLEDColorMessage(red: number, green: number, blue: number): 
   return [0x0c, 0x12, ...varint_encode(field2inner.length), ...field2inner, 0x0c];
 }
 
-function hexFormat(arg) {
+function hexFormat(arg: Buffer | number) {
   if (typeof(arg) !== 'object') {
     arg = Buffer.from([arg]);
   }
@@ -2227,8 +2207,9 @@ function infoLogOnce(pA:BAF, logMessage: string) {
 }
 
 /** SLIP-frames and sends a protobuf message to the fan over TCP. */
-function clientWrite(client, b, pA:BAF) {
+function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BAF) {
   const activeClient = pA.client ?? client;
+  const payload = Buffer.isBuffer(b) ? b : Buffer.from(b);
   if (!activeClient) {
     pA.platform.log.warn(`${pA.Name} - clientWrite called without an active socket`);
     return;
@@ -2236,14 +2217,15 @@ function clientWrite(client, b, pA:BAF) {
   if (pA.client !== client) {
     debugLog(pA, 'network', 6, 'clientWrite called with a stale socket reference; using the current socket instead');
   }
-  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${b.toString('hex')}`);
-  const stuffedBuffer = stuff(b);
+  debugLog(pA, 'network', 7, `sending (unstuffed/unmarked) ${payload.toString('hex')}`);
+  const stuffedBuffer = stuff([...payload]);
   try  {
     const buffer = Buffer.from([0xc0].concat(stuffedBuffer).concat([0xc0]));
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
     activeClient.write(buffer);
-  } catch {
-    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${b.toString('hex')}) failed`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${payload.toString('hex')}) failed: ${message}`);
   }
 }
 

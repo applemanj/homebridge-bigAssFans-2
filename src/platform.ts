@@ -1,7 +1,8 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
+import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, Service, Characteristic } from 'homebridge';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { BigAssFans_i6PlatformAccessory } from './platformAccessory';
+import type { BigAssFansAccessoryContext, BigAssFansDeviceConfig, BigAssFansPlatformConfig } from './types';
 
 /**
  * BigAssFans_i6Platform
@@ -11,11 +12,11 @@ import { BigAssFans_i6PlatformAccessory } from './platformAccessory';
 export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
-  public readonly accessories: PlatformAccessory[] = [];
+  public readonly accessories: PlatformAccessory<BigAssFansAccessoryContext>[] = [];
 
   constructor(
     public readonly log: Logger,
-    public readonly config: PlatformConfig,
+    public readonly config: BigAssFansPlatformConfig,
     public readonly api: API,
   ) {
     this.Service = this.api.hap.Service;
@@ -32,8 +33,9 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
    * Called by Homebridge for each cached accessory restored from disk at startup.
    */
   configureAccessory(accessory: PlatformAccessory) {
-    this.log.info('Loading accessory from cache:', accessory.displayName);
-    this.accessories.push(accessory);
+    const typedAccessory = accessory as PlatformAccessory<BigAssFansAccessoryContext>;
+    this.log.info('Loading accessory from cache:', typedAccessory.displayName);
+    this.accessories.push(typedAccessory);
   }
 
   /**
@@ -77,7 +79,7 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
    * Sets up a single fan accessory: validates config, restores from cache or creates new,
    * and instantiates the accessory handler.
    */
-  private setupFan(fan) {
+  private setupFan(fan: BigAssFansDeviceConfig) {
     try {
       if (!fan.name) {
         throw new Error('"name" is required but not defined!');
@@ -110,7 +112,7 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
     } else {
       this.log.info('Adding new accessory:', fan.name);
 
-      const accessory = new this.api.platformAccessory(fan.name, uuid);
+      const accessory = new this.api.platformAccessory<BigAssFansAccessoryContext>(fan.name, uuid);
       accessory.context.device = fan;
 
       new BigAssFans_i6PlatformAccessory(this, accessory);

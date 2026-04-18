@@ -1,5 +1,15 @@
 ## Release Notes
 
+### v1.1.17
+
+**Code Cleanup**
+- Added a shared internal types module so platform config and accessory context stay in sync.
+- Broke the remaining `platform.ts` / `platformAccessory.ts` circular dependency by moving the shared platform shape into a neutral module.
+- Removed one confirmed dead-code mystery-tracker path and tightened a few low-risk internal helper/property types.
+- Improved socket write warnings to include the underlying error message for easier troubleshooting.
+
+---
+
 ### v1.1.16
 
 **Verification / Packaging**
