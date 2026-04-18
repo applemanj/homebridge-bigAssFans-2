@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.23
+
+**Diagnostics**
+- Added temporary `Active` / on-off diagnostics so logs now show when HomeKit sends an on-off request and when the fan reports its on-off state back.
+- Added regression coverage for the on-off diagnostic path.
+
+---
+
 ### v1.1.22
 
 **HomeKit Control**

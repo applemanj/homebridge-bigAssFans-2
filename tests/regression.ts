@@ -97,6 +97,8 @@ function createTestAccessoryState() {
       lastRotationSpeedRequestAt: 0,
       lastRotationSpeedRequestPercent: undefined as number | undefined,
       lastRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
+      lastFanActiveRequestAt: 0,
+      lastFanActiveRequestValue: undefined as number | undefined,
       pendingRotationSpeedWrite: undefined as Buffer | undefined,
       pendingRotationSpeedWriteTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
       pendingRotationSpeedRequestPercent: undefined as number | undefined,
@@ -216,6 +218,26 @@ function testPercentToRotationSpeedClampsNonZeroToMinimum() {
   assert.equal(__test__.percentToRotationSpeed(1), 1);
   assert.equal(__test__.percentToRotationSpeed(5), 1);
   assert.equal(__test__.percentToRotationSpeed(43), 3);
+}
+
+async function testFanActiveDiagnosticsAreRecorded() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  await __test__.invokeSetFanActive(state as never, 1);
+
+  assert.equal(state.lastFanActiveRequestValue, 1);
+  assert.notEqual(state.lastFanActiveRequestAt, 0);
+  assert.match(infos.at(-1) ?? '', /active diagnostics: HomeKit requested Active=1/i);
+  assert.equal(socket.writes.length, 1);
+  assert.match(socket.writes[0].toString('hex'), /d80201/);
+
+  __test__.fanOnState('1', state as never);
+
+  assert.equal(state.lastFanActiveRequestAt, 0);
+  assert.equal(state.lastFanActiveRequestValue, undefined);
+  assert.match(infos.at(-1) ?? '', /active diagnostics: fan reported FanOn=1 -> Active=1/i);
 }
 
 async function testRotationSpeedDiagnosticsAreRecorded() {
@@ -479,6 +501,7 @@ async function main() {
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
   testPercentToRotationSpeedClampsNonZeroToMinimum();
+  await testFanActiveDiagnosticsAreRecorded();
   await testRotationSpeedDiagnosticsAreRecorded();
   await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();

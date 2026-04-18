@@ -215,6 +215,8 @@ export class BigAssFans_i6PlatformAccessory {
   public lastRotationSpeedRequestAt = 0;
   public lastRotationSpeedRequestPercent: number | undefined = undefined;
   public lastRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
+  public lastFanActiveRequestAt = 0;
+  public lastFanActiveRequestValue: number | undefined = undefined;
   public pendingRotationSpeedWrite: Buffer | undefined = undefined;
   public pendingRotationSpeedWriteTimeout: ReturnType<typeof setTimeout> | undefined;
   public pendingRotationSpeedRequestPercent: number | undefined = undefined;
@@ -509,15 +511,28 @@ export class BigAssFans_i6PlatformAccessory {
   async setFanActive(value: CharacteristicValue) {
     debugLog(this, 'characteristics', 3, 'Set Characteristic Fan Active -> ' + value);
     this.fanStates.Active = value as number;
+    const payload = ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]);
 
     // If the fan is in Auto mode and Active=1 in response to this Set from HomeKit,
     // then it's going to reply with FanOn 0x01 which will cause us to drop it out of auto because it's not 0x02.
     // If homekit is telling us Active while it's in Auto Mode, it must be because we changed the speed so,
     // ignore this request.
     if (this.fanStates.TargetFanState === 1 && this.fanStates.Active === 1) {
+      this.platform.log.info(
+        `${this.Name} - active diagnostics: HomeKit requested Active=${this.fanStates.Active}, `
+        + `targetFanState=${this.fanStates.TargetFanState}, rotationSpeed=${this.fanStates.RotationSpeed}; `
+        + 'ignoring explicit active write while still in Auto mode',
+      );
       return;
     }
-    clientWrite(this.client, ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]), this);
+    this.lastFanActiveRequestAt = Date.now();
+    this.lastFanActiveRequestValue = this.fanStates.Active;
+    this.platform.log.info(
+      `${this.Name} - active diagnostics: HomeKit requested Active=${this.fanStates.Active}, `
+      + `targetFanState=${this.fanStates.TargetFanState}, rotationSpeed=${this.fanStates.RotationSpeed}, `
+      + `payload=${Buffer.from(payload).toString('hex')}`,
+    );
+    clientWrite(this.client, payload, this);
   }
 
   async getFanActive(): Promise<CharacteristicValue> {
@@ -1812,6 +1827,17 @@ function fanOnState(s: string, pA:BAF) {
   debugLog(pA, 'characteristics', 3, 'update Fan Active: ' + pA.fanStates.Active);
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
+
+  if (pA.lastFanActiveRequestAt !== 0) {
+    const elapsedMs = Date.now() - pA.lastFanActiveRequestAt;
+    pA.platform.log.info(
+      `${pA.Name} - active diagnostics: fan reported FanOn=${value} -> Active=${pA.fanStates.Active}, `
+      + `TargetFanState=${pA.fanStates.TargetFanState} ${elapsedMs}ms after HomeKit requested `
+      + `Active=${pA.lastFanActiveRequestValue}`,
+    );
+    pA.lastFanActiveRequestAt = 0;
+    pA.lastFanActiveRequestValue = undefined;
+  }
 }
 
 function sendProbeAndStateRefresh(pA: BAF) {
@@ -3614,6 +3640,12 @@ export const __test__ = {
   fanRotationSpeed,
   flushFunQueue,
   getVarint,
+  async invokeSetFanActive(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
+    return BigAssFans_i6PlatformAccessory.prototype.setFanActive.call(
+      pA as BigAssFans_i6PlatformAccessory,
+      value,
+    );
+  },
   async invokeSetRotationSpeed(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
     return BigAssFans_i6PlatformAccessory.prototype.setRotationSpeed.call(
       pA as BigAssFans_i6PlatformAccessory,
