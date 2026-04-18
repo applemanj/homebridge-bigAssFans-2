@@ -211,6 +211,13 @@ function testRotationSpeedPercentAllowsZero() {
   assert.equal(__test__.rotationSpeedPercent(1), 14);
 }
 
+function testPercentToRotationSpeedClampsNonZeroToMinimum() {
+  assert.equal(__test__.percentToRotationSpeed(0), 0);
+  assert.equal(__test__.percentToRotationSpeed(1), 1);
+  assert.equal(__test__.percentToRotationSpeed(5), 1);
+  assert.equal(__test__.percentToRotationSpeed(43), 3);
+}
+
 async function testRotationSpeedDiagnosticsAreRecorded() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
@@ -312,6 +319,20 @@ async function testRotationSpeedDragBurstOnlyWritesFinalSpeed() {
   } finally {
     global.setTimeout = originalSetTimeout;
   }
+}
+
+async function testLowNonZeroRotationSpeedMapsToSpeedOne() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 1);
+  });
+
+  assert.equal(state.lastRotationSpeedRequestDeviceSpeed, 1);
+  assert.match(socket.writes[0].toString('hex'), /f00201/);
+  assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 14 });
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -457,11 +478,13 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
+  testPercentToRotationSpeedClampsNonZeroToMinimum();
   await testRotationSpeedDiagnosticsAreRecorded();
   await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();
   await testRotationSpeedIgnoresBriefStaleEchoes();
   await testRotationSpeedDragBurstOnlyWritesFinalSpeed();
+  await testLowNonZeroRotationSpeedMapsToSpeedOne();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

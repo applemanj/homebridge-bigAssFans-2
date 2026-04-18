@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.22
+
+**HomeKit Control**
+- Fixed low-end slider mapping so very small nonzero HomeKit percentages now clamp to the fan's minimum real speed instead of rounding down to off.
+- Added regression coverage for low nonzero slider values such as `1%`.
+
+---
+
 ### v1.1.21
 
 **HomeKit Control**

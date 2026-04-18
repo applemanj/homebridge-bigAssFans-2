@@ -564,7 +564,7 @@ export class BigAssFans_i6PlatformAccessory {
     } else {
       this.fanStates.homeShieldUp = false;
       debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
-      this.fanStates.RotationSpeed = Math.round((requestedPercent / 100) * MAXFANSPEED);
+      this.fanStates.RotationSpeed = percentToRotationSpeed(requestedPercent);
       if (this.fanStates.RotationSpeed > MAXFANSPEED) {
         this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': '
           + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
@@ -2216,6 +2216,14 @@ function rotationSpeedPercent(speed: number) {
   return Math.round((speed / MAXFANSPEED) * 100);
 }
 
+function percentToRotationSpeed(percent: number) {
+  if (percent <= 0) {
+    return 0;
+  }
+
+  return Math.max(1, Math.round((percent / 100) * MAXFANSPEED));
+}
+
 function debugLog(pA:BAF, logTag:string|string[], logLevel:number|number[], logMessage:string) {
   if (typeof(logTag) === 'string') {
     if (pA.debugLevels[logTag] === undefined) {
@@ -3614,6 +3622,7 @@ export const __test__ = {
   },
   networkSetup,
   onData,
+  percentToRotationSpeed,
   reconcileCapabilities,
   rotationSpeedPercent,
   unstuff,
