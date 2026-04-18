@@ -99,6 +99,8 @@ function createTestAccessoryState() {
       lastRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
       pendingRotationSpeedWrite: undefined as Buffer | undefined,
       pendingRotationSpeedWriteTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
+      pendingRotationSpeedRequestPercent: undefined as number | undefined,
+      pendingRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
       expectedRotationSpeed: undefined as number | undefined,
       ignoreUnexpectedRotationSpeedUntil: 0,
       platform: {
@@ -134,19 +136,28 @@ function createTestAccessoryState() {
 
 async function withImmediateTimeouts<T>(fn: () => Promise<T> | T): Promise<T> {
   const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const callbacks: Array<() => void> = [];
   global.setTimeout = (((
     callback: (...args: never[]) => void,
     _delay?: number,
     ..._args: never[]
   ) => {
-    callback();
-    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+    const handle = { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+    callbacks.push(() => callback());
+    return handle;
   }) as unknown as typeof setTimeout);
+  global.clearTimeout = (((_handle?: ReturnType<typeof setTimeout>) => undefined) as unknown as typeof clearTimeout);
 
   try {
-    return await fn();
+    const result = await fn();
+    while (callbacks.length > 0) {
+      callbacks.shift()?.();
+    }
+    return result;
   } finally {
     global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
   }
 }
 
@@ -227,7 +238,9 @@ async function testRotationSpeedOptimisticallySnapsHomeKitState() {
   state.fanStates.Active = 0;
   state.fanStates.CurrentFanState = 0;
 
-  await __test__.invokeSetRotationSpeed(state as never, 69);
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 69);
+  });
 
   assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 71 });
   assert.deepEqual(state.fanService.updates.at(-2), { characteristic: 'Active', value: 1 });
@@ -257,7 +270,9 @@ async function testRotationSpeedIgnoresBriefStaleEchoes() {
   const socket = new FakeSocket();
   state.client = socket;
 
-  await __test__.invokeSetRotationSpeed(state as never, 35);
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 35);
+  });
 
   __test__.fanRotationSpeed('3', state as never);
   assert.equal(state.fanStates.RotationSpeed, 2);
@@ -266,6 +281,37 @@ async function testRotationSpeedIgnoresBriefStaleEchoes() {
   __test__.fanRotationSpeed('2', state as never);
   assert.equal(state.fanStates.RotationSpeed, 2);
   assert.equal(state.expectedRotationSpeed, undefined);
+}
+
+async function testRotationSpeedDragBurstOnlyWritesFinalSpeed() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  const originalSetTimeout = global.setTimeout;
+  let timeoutCallback: (() => void) | undefined;
+  global.setTimeout = (((
+    callback: (...args: never[]) => void,
+    _delay?: number,
+    ..._args: never[]
+  ) => {
+    timeoutCallback = () => callback();
+    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+  }) as unknown as typeof setTimeout);
+
+  try {
+    await __test__.invokeSetRotationSpeed(state as never, 68);
+    await __test__.invokeSetRotationSpeed(state as never, 43);
+
+    assert.equal(socket.writes.length, 0);
+    timeoutCallback?.();
+
+    assert.equal(socket.writes.length, 1);
+    assert.match(socket.writes[0].toString('hex'), /f00203/);
+    assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 43 });
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -415,6 +461,7 @@ async function main() {
   await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();
   await testRotationSpeedIgnoresBriefStaleEchoes();
+  await testRotationSpeedDragBurstOnlyWritesFinalSpeed();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

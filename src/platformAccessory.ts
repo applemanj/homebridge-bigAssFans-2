@@ -217,6 +217,8 @@ export class BigAssFans_i6PlatformAccessory {
   public lastRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
   public pendingRotationSpeedWrite: Buffer | undefined = undefined;
   public pendingRotationSpeedWriteTimeout: ReturnType<typeof setTimeout> | undefined;
+  public pendingRotationSpeedRequestPercent: number | undefined = undefined;
+  public pendingRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
   public expectedRotationSpeed: number | undefined = undefined;
   public ignoreUnexpectedRotationSpeedUntil = 0;
   public debugLastFanOccupancyValue = 0;
@@ -570,29 +572,10 @@ export class BigAssFans_i6PlatformAccessory {
       }
       b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
     }
-    this.lastRotationSpeedRequestAt = Date.now();
-    this.lastRotationSpeedRequestPercent = requestedPercent;
-    this.lastRotationSpeedRequestDeviceSpeed = this.fanStates.RotationSpeed;
     this.expectedRotationSpeed = this.fanStates.RotationSpeed;
-    this.ignoreUnexpectedRotationSpeedUntil = this.lastRotationSpeedRequestAt + ROTATION_SPEED_SETTLE_MS;
-    this.platform.log.info(
-      `${this.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
-      + `${this.fanStates.RotationSpeed}, targetFanState=${this.fanStates.TargetFanState}, `
-      + `active=${this.fanStates.Active}, payload=${Buffer.from(b).toString('hex')}`,
-    );
-    const snappedPercent = rotationSpeedPercent(this.fanStates.RotationSpeed);
-    this.fanService.updateCharacteristic(this.platform.Characteristic.RotationSpeed, snappedPercent);
-    if (this.fanStates.RotationSpeed === 0) {
-      this.fanStates.Active = 0;
-      this.fanStates.CurrentFanState = 0;
-      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
-      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
-    } else {
-      this.fanStates.Active = 1;
-      this.fanStates.CurrentFanState = 2;
-      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
-      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
-    }
+    this.ignoreUnexpectedRotationSpeedUntil = Date.now() + ROTATION_SPEED_SETTLE_MS;
+    this.pendingRotationSpeedRequestPercent = requestedPercent;
+    this.pendingRotationSpeedRequestDeviceSpeed = this.fanStates.RotationSpeed;
     scheduleRotationSpeedWrite(this, Buffer.from(b));
   }
 
@@ -1861,6 +1844,18 @@ function fanRotationSpeed(s: string, pA:BAF) {
   const now = Date.now();
 
   if (
+    pA.pendingRotationSpeedWriteTimeout !== undefined
+    && pA.expectedRotationSpeed !== undefined
+  ) {
+    pA.platform.log.info(
+      `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
+      + `while debouncing HomeKit request for ${pA.expectedRotationSpeed} `
+      + `(${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
+    );
+    return;
+  }
+
+  if (
     pA.expectedRotationSpeed !== undefined
     && now < pA.ignoreUnexpectedRotationSpeedUntil
     && value !== pA.expectedRotationSpeed
@@ -2285,6 +2280,29 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
       return;
     }
 
+    const requestedPercent = pA.pendingRotationSpeedRequestPercent ?? rotationSpeedPercent(pA.fanStates.RotationSpeed);
+    const requestedDeviceSpeed = pA.pendingRotationSpeedRequestDeviceSpeed ?? pA.fanStates.RotationSpeed;
+    pA.lastRotationSpeedRequestAt = Date.now();
+    pA.lastRotationSpeedRequestPercent = requestedPercent;
+    pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
+    pA.platform.log.info(
+      `${pA.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
+      + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
+      + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,
+    );
+    const snappedPercent = rotationSpeedPercent(requestedDeviceSpeed);
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, snappedPercent);
+    if (requestedDeviceSpeed === 0) {
+      pA.fanStates.Active = 0;
+      pA.fanStates.CurrentFanState = 0;
+    } else {
+      pA.fanStates.Active = 1;
+      pA.fanStates.CurrentFanState = 2;
+    }
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
+    pA.pendingRotationSpeedRequestPercent = undefined;
+    pA.pendingRotationSpeedRequestDeviceSpeed = undefined;
     clientWrite(pA.client, pendingPayload, pA);
   }, ROTATION_SPEED_DEBOUNCE_MS);
 }

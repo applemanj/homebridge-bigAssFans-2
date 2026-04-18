@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.21
+
+**HomeKit Control**
+- Deferred the HomeKit preset snap until the debounced speed write actually fires, so slider drags are no longer rewritten to intermediate presets while the user is still moving the control.
+- Added regression coverage to ensure rapid slider drags collapse to one final discrete fan-speed write.
+
+---
+
 ### v1.1.20
 
 **HomeKit Control**
