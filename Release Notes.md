@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.19
+
+**HomeKit Control**
+- Updated the HomeKit speed slider path to snap immediately to the nearest supported preset instead of waiting for the fan's state echo.
+- This keeps the UI aligned with the fan's 7-step speed model as soon as the command is sent, while still reconciling against the real device report afterward.
+- Added regression coverage for the optimistic snap behavior.
+
+---
+
 ### v1.1.18
 
 **Diagnostics**

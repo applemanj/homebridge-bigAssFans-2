@@ -572,6 +572,19 @@ export class BigAssFans_i6PlatformAccessory {
       + `${this.fanStates.RotationSpeed}, targetFanState=${this.fanStates.TargetFanState}, `
       + `active=${this.fanStates.Active}, payload=${Buffer.from(b).toString('hex')}`,
     );
+    const snappedPercent = rotationSpeedPercent(this.fanStates.RotationSpeed);
+    this.fanService.updateCharacteristic(this.platform.Characteristic.RotationSpeed, snappedPercent);
+    if (this.fanStates.RotationSpeed === 0) {
+      this.fanStates.Active = 0;
+      this.fanStates.CurrentFanState = 0;
+      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
+      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
+    } else {
+      this.fanStates.Active = 1;
+      this.fanStates.CurrentFanState = 2;
+      this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
+      this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
+    }
     clientWrite(this.client, b, this);
   }
 

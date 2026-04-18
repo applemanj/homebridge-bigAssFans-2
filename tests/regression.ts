@@ -196,6 +196,20 @@ async function testRotationSpeedDiagnosticsAreRecorded() {
   assert.match(infos.at(-1) ?? '', /fan reported 4 \(57%\)/i);
 }
 
+async function testRotationSpeedOptimisticallySnapsHomeKitState() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.fanStates.Active = 0;
+  state.fanStates.CurrentFanState = 0;
+
+  await __test__.invokeSetRotationSpeed(state as never, 69);
+
+  assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 71 });
+  assert.deepEqual(state.fanService.updates.at(-2), { characteristic: 'Active', value: 1 });
+  assert.deepEqual(state.fanService.updates.at(-1), { characteristic: 'CurrentFanState', value: 2 });
+}
+
 async function testRotationSpeedChangeSendsSingleWrite() {
   const { state } = createTestAccessoryState();
   const socket = new FakeSocket();
@@ -356,6 +370,7 @@ async function main() {
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
   await testRotationSpeedDiagnosticsAreRecorded();
+  await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();

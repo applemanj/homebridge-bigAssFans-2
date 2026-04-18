@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.18
+## homebridge-bigassfans-2 v1.1.19
 
 </span>
 
@@ -37,6 +37,10 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.19**
+- Updated the HomeKit speed slider path to snap immediately to the nearest supported fan preset instead of waiting for the fan's state echo.
+- This should make the slider feel more responsive while still reconciling against the real fan report afterward.
 
 **v1.1.18**
 - Added temporary speed-path diagnostics so logs show when HomeKit sends a slider speed request and when the fan first reports a speed back.
