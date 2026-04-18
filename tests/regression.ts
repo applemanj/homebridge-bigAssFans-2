@@ -97,6 +97,10 @@ function createTestAccessoryState() {
       lastRotationSpeedRequestAt: 0,
       lastRotationSpeedRequestPercent: undefined as number | undefined,
       lastRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
+      pendingRotationSpeedWrite: undefined as Buffer | undefined,
+      pendingRotationSpeedWriteTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
+      expectedRotationSpeed: undefined as number | undefined,
+      ignoreUnexpectedRotationSpeedUntil: 0,
       platform: {
         Characteristic: {
           Active: 'Active',
@@ -126,6 +130,24 @@ function createTestAccessoryState() {
       },
     },
   };
+}
+
+async function withImmediateTimeouts<T>(fn: () => Promise<T> | T): Promise<T> {
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = (((
+    callback: (...args: never[]) => void,
+    _delay?: number,
+    ..._args: never[]
+  ) => {
+    callback();
+    return { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+  }) as unknown as typeof setTimeout);
+
+  try {
+    return await fn();
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
 }
 
 function testGetVarintSupportsLargeValues() {
@@ -183,7 +205,9 @@ async function testRotationSpeedDiagnosticsAreRecorded() {
   const socket = new FakeSocket();
   state.client = socket;
 
-  await __test__.invokeSetRotationSpeed(state as never, 57);
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 57);
+  });
 
   assert.equal(state.lastRotationSpeedRequestPercent, 57);
   assert.equal(state.lastRotationSpeedRequestDeviceSpeed, 4);
@@ -219,11 +243,29 @@ async function testRotationSpeedChangeSendsSingleWrite() {
   state.fanStates.CurrentFanState = 0;
   state.fanStates.RotationSpeed = 0;
 
-  await __test__.invokeSetRotationSpeed(state as never, 57);
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 57);
+  });
 
   assert.equal(state.fanStates.TargetFanState, 1);
   assert.equal(socket.writes.length, 1);
   assert.match(socket.writes[0].toString('hex'), /f00204/);
+}
+
+async function testRotationSpeedIgnoresBriefStaleEchoes() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  await __test__.invokeSetRotationSpeed(state as never, 35);
+
+  __test__.fanRotationSpeed('3', state as never);
+  assert.equal(state.fanStates.RotationSpeed, 2);
+  assert.match(infos.at(-1) ?? '', /ignoring fan report 3/i);
+
+  __test__.fanRotationSpeed('2', state as never);
+  assert.equal(state.fanStates.RotationSpeed, 2);
+  assert.equal(state.expectedRotationSpeed, undefined);
 }
 
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
@@ -372,6 +414,7 @@ async function main() {
   await testRotationSpeedDiagnosticsAreRecorded();
   await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();
+  await testRotationSpeedIgnoresBriefStaleEchoes();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

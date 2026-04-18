@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.20
+
+**HomeKit Control**
+- Smoothed out HomeKit speed slider drags by coalescing rapid slider writes into the final discrete fan step instead of sending every intermediate percentage.
+- Briefly ignores mismatched fan speed echoes right after a HomeKit speed change so older device reports do not snap the slider back to a stale preset.
+- Added regression coverage for the stale-echo suppression path.
+
+---
+
 ### v1.1.19
 
 **HomeKit Control**
