@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.18
+
+**Diagnostics**
+- Added temporary speed-path diagnostics so logs show when HomeKit sends a slider speed request and when the fan first reports a speed back.
+- Included the requested percentage, mapped device speed, write payload, and elapsed time to the first fan speed report.
+- Added regression coverage to ensure the diagnostic state is recorded and cleared correctly.
+
+---
+
 ### v1.1.17
 
 **Code Cleanup**

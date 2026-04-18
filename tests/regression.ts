@@ -94,6 +94,9 @@ function createTestAccessoryState() {
       lastDebugMessage: '',
       lastDebugMessageTag: '',
       messagesLogged: new Set<string>(),
+      lastRotationSpeedRequestAt: 0,
+      lastRotationSpeedRequestPercent: undefined as number | undefined,
+      lastRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
       platform: {
         Characteristic: {
           Active: 'Active',
@@ -173,6 +176,24 @@ function testAutoModeStateSync() {
 function testRotationSpeedPercentAllowsZero() {
   assert.equal(__test__.rotationSpeedPercent(0), 0);
   assert.equal(__test__.rotationSpeedPercent(1), 14);
+}
+
+async function testRotationSpeedDiagnosticsAreRecorded() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  await __test__.invokeSetRotationSpeed(state as never, 57);
+
+  assert.equal(state.lastRotationSpeedRequestPercent, 57);
+  assert.equal(state.lastRotationSpeedRequestDeviceSpeed, 4);
+  assert.notEqual(state.lastRotationSpeedRequestAt, 0);
+  assert.match(infos.at(-1) ?? '', /HomeKit requested 57% -> device speed 4/i);
+
+  __test__.fanRotationSpeed('4', state as never);
+
+  assert.equal(state.lastRotationSpeedRequestAt, 0);
+  assert.match(infos.at(-1) ?? '', /fan reported 4 \(57%\)/i);
 }
 
 async function testRotationSpeedChangeSendsSingleWrite() {
@@ -334,6 +355,7 @@ async function main() {
   testMalformedFrameIsDropped();
   testAutoModeStateSync();
   testRotationSpeedPercentAllowsZero();
+  await testRotationSpeedDiagnosticsAreRecorded();
   await testRotationSpeedChangeSendsSingleWrite();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
