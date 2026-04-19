@@ -1354,6 +1354,7 @@ function networkSetup(pA: BAF) {
       pA.client.destroy();
     }
     pA.client = undefined;
+    clearRotationSpeedDiagnostics(pA);
 
     setTimeout(() => {
       pA.client = connectSocket(connectOptions, () => {
@@ -1828,6 +1829,10 @@ function fanOnState(s: string, pA:BAF) {
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
 
+  if (value === 0) {
+    clearRotationSpeedDiagnostics(pA);
+  }
+
   if (pA.lastFanActiveRequestAt !== 0) {
     const elapsedMs = Date.now() - pA.lastFanActiveRequestAt;
     pA.platform.log.info(
@@ -2298,6 +2303,22 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   }
 }
 
+function clearRotationSpeedDiagnostics(pA: BAF) {
+  if (pA.pendingRotationSpeedWriteTimeout !== undefined) {
+    clearTimeout(pA.pendingRotationSpeedWriteTimeout);
+    pA.pendingRotationSpeedWriteTimeout = undefined;
+  }
+
+  pA.pendingRotationSpeedWrite = undefined;
+  pA.pendingRotationSpeedRequestPercent = undefined;
+  pA.pendingRotationSpeedRequestDeviceSpeed = undefined;
+  pA.lastRotationSpeedRequestAt = 0;
+  pA.lastRotationSpeedRequestPercent = undefined;
+  pA.lastRotationSpeedRequestDeviceSpeed = undefined;
+  pA.expectedRotationSpeed = undefined;
+  pA.ignoreUnexpectedRotationSpeedUntil = 0;
+}
+
 function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
   pA.pendingRotationSpeedWrite = payload;
 
@@ -2346,6 +2367,7 @@ function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BA
   const activeClient = pA.client ?? client;
   const payload = Buffer.isBuffer(b) ? b : Buffer.from(b);
   if (!activeClient) {
+    clearRotationSpeedDiagnostics(pA);
     pA.platform.log.warn(`${pA.Name} - clientWrite called without an active socket`);
     return;
   }
@@ -2359,6 +2381,7 @@ function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BA
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
     activeClient.write(buffer);
   } catch (error) {
+    clearRotationSpeedDiagnostics(pA);
     const message = error instanceof Error ? error.message : String(error);
     pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${payload.toString('hex')}) failed: ${message}`);
   }

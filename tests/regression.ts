@@ -357,6 +357,28 @@ async function testLowNonZeroRotationSpeedMapsToSpeedOne() {
   assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 14 });
 }
 
+async function testFanOffClearsPendingSpeedDiagnostics() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  await withImmediateTimeouts(async () => {
+    await __test__.invokeSetRotationSpeed(state as never, 31);
+  });
+
+  assert.notEqual(state.lastRotationSpeedRequestAt, 0);
+
+  __test__.fanOnState('0', state as never);
+
+  assert.equal(state.lastRotationSpeedRequestAt, 0);
+  assert.equal(state.lastRotationSpeedRequestPercent, undefined);
+  assert.equal(state.lastRotationSpeedRequestDeviceSpeed, undefined);
+  assert.equal(state.expectedRotationSpeed, undefined);
+
+  __test__.fanRotationSpeed('0', state as never);
+  assert.doesNotMatch(infos.at(-1) ?? '', /8161ms after HomeKit requested/i);
+}
+
 function testFanUpdatesAreNotBlockedByUnknownTargetBulb() {
   const { state } = createTestAccessoryState();
   state.capabilitiesEstablished = true;
@@ -508,6 +530,7 @@ async function main() {
   await testRotationSpeedIgnoresBriefStaleEchoes();
   await testRotationSpeedDragBurstOnlyWritesFinalSpeed();
   await testLowNonZeroRotationSpeedMapsToSpeedOne();
+  await testFanOffClearsPendingSpeedDiagnostics();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();

@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.24
+
+**Diagnostics**
+- Cleared stale speed-diagnostic state when the fan turns off or the socket/write path fails, so later off-state speed echoes no longer get logged against an older speed request.
+- Added regression coverage for resetting speed-diagnostic state after a fan-off event.
+
+---
+
 ### v1.1.23
 
 **Diagnostics**
