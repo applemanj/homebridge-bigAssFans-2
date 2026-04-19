@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.26
+
+**HomeKit Control**
+- Accepted matching fan speed reports that arrive during the debounce window instead of ignoring them as stale, which should prevent the first low-speed request from appearing to take a full probe cycle.
+- Added regression coverage for the matching-report-during-debounce path.
+
+---
+
 ### v1.1.25
 
 **HomeKit Control**

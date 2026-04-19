@@ -384,6 +384,46 @@ async function testLowNonZeroRotationSpeedMapsToSpeedOne() {
   assert.deepEqual(state.fanService.updates.at(-3), { characteristic: 'RotationSpeed', value: 14 });
 }
 
+async function testMatchingFanReportDuringDebounceIsAccepted() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timeoutCallback: (() => void) | undefined;
+  global.setTimeout = (((
+    callback: (...args: never[]) => void,
+    _delay?: number,
+    ..._args: never[]
+  ) => {
+    timeoutHandle = { ref() { return this; }, unref() { return this; } } as ReturnType<typeof setTimeout>;
+    timeoutCallback = () => callback();
+    return timeoutHandle;
+  }) as unknown as typeof setTimeout);
+  global.clearTimeout = (((handle?: ReturnType<typeof setTimeout>) => {
+    if (handle === timeoutHandle) {
+      timeoutCallback = undefined;
+    }
+  }) as unknown as typeof clearTimeout);
+
+  try {
+    await __test__.invokeSetRotationSpeed(state as never, 1);
+    __test__.fanRotationSpeed('1', state as never);
+
+    assert.equal(timeoutCallback, undefined);
+    assert.equal(socket.writes.length, 0);
+    assert.equal(state.fanStates.RotationSpeed, 1);
+    assert.equal(state.lastRotationSpeedRequestAt, 0);
+    assert.doesNotMatch(infos.join('\n'), /ignoring fan report 1/i);
+    assert.match(infos.at(-1) ?? '', /fan reported 1 \(14%\)/i);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+}
+
 async function testFanOffClearsPendingSpeedDiagnostics() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
@@ -559,6 +599,7 @@ async function main() {
   await testRotationSpeedIgnoresBriefStaleEchoes();
   await testRotationSpeedDragBurstOnlyWritesFinalSpeed();
   await testLowNonZeroRotationSpeedMapsToSpeedOne();
+  await testMatchingFanReportDuringDebounceIsAccepted();
   await testFanOffClearsPendingSpeedDiagnostics();
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();

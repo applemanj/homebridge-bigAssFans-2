@@ -1906,12 +1906,33 @@ function fanRotationSpeed(s: string, pA:BAF) {
     pA.pendingRotationSpeedWriteTimeout !== undefined
     && pA.expectedRotationSpeed !== undefined
   ) {
-    pA.platform.log.info(
-      `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
-      + `while debouncing HomeKit request for ${pA.expectedRotationSpeed} `
-      + `(${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
-    );
-    return;
+    if (value === pA.expectedRotationSpeed) {
+      clearTimeout(pA.pendingRotationSpeedWriteTimeout);
+      pA.pendingRotationSpeedWriteTimeout = undefined;
+      const pendingPayload = pA.pendingRotationSpeedWrite;
+      pA.pendingRotationSpeedWrite = undefined;
+      const requestedPercent = pA.pendingRotationSpeedRequestPercent ?? rotationSpeedPercent(value);
+      const requestedDeviceSpeed = pA.pendingRotationSpeedRequestDeviceSpeed ?? value;
+      pA.pendingRotationSpeedRequestPercent = undefined;
+      pA.pendingRotationSpeedRequestDeviceSpeed = undefined;
+      pA.lastRotationSpeedRequestAt = now;
+      pA.lastRotationSpeedRequestPercent = requestedPercent;
+      pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
+      if (pendingPayload) {
+        pA.platform.log.info(
+          `${pA.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
+          + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
+          + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,
+        );
+      }
+    } else {
+      pA.platform.log.info(
+        `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
+        + `while debouncing HomeKit request for ${pA.expectedRotationSpeed} `
+        + `(${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
+      );
+      return;
+    }
   }
 
   if (

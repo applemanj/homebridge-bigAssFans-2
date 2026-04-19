@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.25
+## homebridge-bigassfans-2 v1.1.26
 
 </span>
 
@@ -37,6 +37,10 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.26**
+- Accepted matching fan speed reports that arrive during the debounce window instead of ignoring them as stale, which should prevent the first low-speed request from appearing to take a full probe cycle.
+- Added regression coverage for the matching-report-during-debounce path.
 
 **v1.1.25**
 - Updated the `Active` on-off path to update HomeKit immediately instead of waiting for the fan echo, which should make the first on request feel more responsive.
