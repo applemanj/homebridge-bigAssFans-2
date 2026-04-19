@@ -7,6 +7,7 @@ import type { BigAssFansAccessoryContext, BigAssFansPlatformContext } from './ty
 const MAXFANSPEED = 7;
 const ROTATION_SPEED_DEBOUNCE_MS = 125;
 const ROTATION_SPEED_SETTLE_MS = 2000;
+const FAN_ACTIVE_DEDUP_MS = 500;
 
 const ONEBYTEHEADER = [0x12, 0x07, 0x12, 0x05, 0x1a, 0x03];
 
@@ -217,6 +218,8 @@ export class BigAssFans_i6PlatformAccessory {
   public lastRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
   public lastFanActiveRequestAt = 0;
   public lastFanActiveRequestValue: number | undefined = undefined;
+  public lastFanActiveWriteAt = 0;
+  public lastFanActiveWriteValue: number | undefined = undefined;
   public pendingRotationSpeedWrite: Buffer | undefined = undefined;
   public pendingRotationSpeedWriteTimeout: ReturnType<typeof setTimeout> | undefined;
   public pendingRotationSpeedRequestPercent: number | undefined = undefined;
@@ -512,6 +515,17 @@ export class BigAssFans_i6PlatformAccessory {
     debugLog(this, 'characteristics', 3, 'Set Characteristic Fan Active -> ' + value);
     this.fanStates.Active = value as number;
     const payload = ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]);
+    const now = Date.now();
+
+    if (this.fanStates.Active === 0) {
+      this.fanStates.CurrentFanState = 0;
+    } else if (this.fanStates.RotationSpeed > 0) {
+      this.fanStates.CurrentFanState = 2;
+    } else {
+      this.fanStates.CurrentFanState = 1;
+    }
+    this.fanService.updateCharacteristic(this.platform.Characteristic.Active, this.fanStates.Active);
+    this.fanService.updateCharacteristic(this.platform.Characteristic.CurrentFanState, this.fanStates.CurrentFanState);
 
     // If the fan is in Auto mode and Active=1 in response to this Set from HomeKit,
     // then it's going to reply with FanOn 0x01 which will cause us to drop it out of auto because it's not 0x02.
@@ -525,8 +539,22 @@ export class BigAssFans_i6PlatformAccessory {
       );
       return;
     }
+
+    if (
+      this.lastFanActiveWriteValue === this.fanStates.Active
+      && now - this.lastFanActiveWriteAt < FAN_ACTIVE_DEDUP_MS
+    ) {
+      this.platform.log.info(
+        `${this.Name} - active diagnostics: suppressing duplicate Active=${this.fanStates.Active} `
+        + `${now - this.lastFanActiveWriteAt}ms after the previous write`,
+      );
+      return;
+    }
+
     this.lastFanActiveRequestAt = Date.now();
     this.lastFanActiveRequestValue = this.fanStates.Active;
+    this.lastFanActiveWriteAt = now;
+    this.lastFanActiveWriteValue = this.fanStates.Active;
     this.platform.log.info(
       `${this.Name} - active diagnostics: HomeKit requested Active=${this.fanStates.Active}, `
       + `targetFanState=${this.fanStates.TargetFanState}, rotationSpeed=${this.fanStates.RotationSpeed}, `

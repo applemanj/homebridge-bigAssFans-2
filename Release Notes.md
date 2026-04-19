@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.25
+
+**HomeKit Control**
+- Updated the `Active` on-off path to update HomeKit immediately instead of waiting for the fan echo, which should make the first on request feel more responsive.
+- Suppressed rapid duplicate `Active` writes so HomeKit bursts do not resend the same on-off command multiple times.
+- Added regression coverage for the optimistic `Active` update and duplicate-write suppression.
+
+---
+
 ### v1.1.24
 
 **Diagnostics**

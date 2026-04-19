@@ -99,6 +99,8 @@ function createTestAccessoryState() {
       lastRotationSpeedRequestDeviceSpeed: undefined as number | undefined,
       lastFanActiveRequestAt: 0,
       lastFanActiveRequestValue: undefined as number | undefined,
+      lastFanActiveWriteAt: 0,
+      lastFanActiveWriteValue: undefined as number | undefined,
       pendingRotationSpeedWrite: undefined as Buffer | undefined,
       pendingRotationSpeedWriteTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
       pendingRotationSpeedRequestPercent: undefined as number | undefined,
@@ -238,6 +240,31 @@ async function testFanActiveDiagnosticsAreRecorded() {
   assert.equal(state.lastFanActiveRequestAt, 0);
   assert.equal(state.lastFanActiveRequestValue, undefined);
   assert.match(infos.at(-1) ?? '', /active diagnostics: fan reported FanOn=1 -> Active=1/i);
+}
+
+async function testFanActiveOptimisticallyUpdatesHomeKitState() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.fanStates.RotationSpeed = 0;
+
+  await __test__.invokeSetFanActive(state as never, 1);
+
+  assert.deepEqual(state.fanService.updates.at(-2), { characteristic: 'Active', value: 1 });
+  assert.deepEqual(state.fanService.updates.at(-1), { characteristic: 'CurrentFanState', value: 1 });
+}
+
+async function testDuplicateFanActiveWriteIsSuppressed() {
+  const { state, infos } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.fanStates.RotationSpeed = 2;
+
+  await __test__.invokeSetFanActive(state as never, 1);
+  await __test__.invokeSetFanActive(state as never, 1);
+
+  assert.equal(socket.writes.length, 1);
+  assert.match(infos.at(-1) ?? '', /suppressing duplicate Active=1/i);
 }
 
 async function testRotationSpeedDiagnosticsAreRecorded() {
@@ -524,6 +551,8 @@ async function main() {
   testRotationSpeedPercentAllowsZero();
   testPercentToRotationSpeedClampsNonZeroToMinimum();
   await testFanActiveDiagnosticsAreRecorded();
+  await testFanActiveOptimisticallyUpdatesHomeKitState();
+  await testDuplicateFanActiveWriteIsSuppressed();
   await testRotationSpeedDiagnosticsAreRecorded();
   await testRotationSpeedOptimisticallySnapsHomeKitState();
   await testRotationSpeedChangeSendsSingleWrite();
