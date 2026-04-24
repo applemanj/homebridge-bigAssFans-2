@@ -1,5 +1,16 @@
 ## Release Notes
 
+### v1.1.29
+
+**Admin UI**
+- Added a custom Homebridge Settings UI modeled after the `homebridge-roborock-vacuum2` admin experience.
+- Reused the shared dark design system, panel layout, settings grids, status pills, toast behavior, and diagnostics card structure.
+- Added config-readiness diagnostics for each configured fan, including required field status, light detection mode, sensor exposure, optional services, and debug-port state.
+- The UI preserves child-bridge metadata and unknown existing keys while omitting optional settings that match plugin defaults.
+- Updated `config.schema.json` and README documentation so the UI-exposed settings match the documented behavior.
+
+---
+
 ### v1.1.28
 
 **Admin UI**

@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.28
+## homebridge-bigassfans-2 v1.1.29
 
 </span>
 
@@ -37,6 +37,12 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.29**
+- Added a custom Homebridge Settings UI modeled after the `homebridge-roborock-vacuum2` admin experience.
+- The UI now uses the shared dark design system, panel layout, settings grids, status pills, toast feedback, and diagnostics card structure.
+- The admin UI preserves child-bridge and unknown config keys while keeping optional fan settings omitted when they match defaults.
+- Updated `config.schema.json` and README documentation so the UI-exposed settings match the documented behavior.
 
 **v1.1.28**
 - Improved the Homebridge Settings UI wording and validation for fan entries.
@@ -219,6 +225,8 @@ Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configu
 
 > **Note:** The `platform` value remains `"BigAssFans-i6"` for compatibility.
 
+The Homebridge Settings UI includes a custom admin screen for this plugin. It exposes the same documented settings below, keeps the required fan identity fields easy to scan, and shows config diagnostics for each fan. Saving through the UI preserves existing child-bridge metadata and other unknown keys while omitting optional settings that match plugin defaults.
+
 #### Minimal Example
 
 ```json
@@ -338,6 +346,10 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 | `enableIncrementalButtons` | `false` | Add +/- buttons for brightness and fan speed |
 | `incrementalButtonsDelay` | `500` | Auto-reset delay for incremental buttons (ms) |
 | `enableDebugPort` | `false` | Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics |
+
+#### UI Diagnostics
+
+The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
 
 ### Migrating from homebridge-i6-bigassfans
 

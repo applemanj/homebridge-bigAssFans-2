@@ -2,6 +2,8 @@
   "pluginAlias": "BigAssFans-i6",
   "pluginType": "platform",
   "singular": true,
+  "customUi": true,
+  "customUiPath": "./homebridge-ui",
   "headerDisplay": "Homebridge 2.0 plugin for Big Ass Fans (i6, es6, Haiku H/I, Haiku L)",
   "footerDisplay": "For details, see the [README](https://github.com/applemanj/homebridge-bigAssFans-2#readme). Whoosh is now native SwingMode in the fan tile. Fan Auto is now native in the fan tile via TargetFanState.",
   "schema": {
