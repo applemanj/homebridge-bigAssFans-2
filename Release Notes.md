@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.27
+
+**Polish**
+- Gated speed and on-off diagnostic timing logs behind `enableDebugPort`, keeping normal installations quiet while preserving the troubleshooting path.
+- Updated the Homebridge UI schema wording for `probeFrequency` to reflect that it controls both keep-alive probes and state refreshes.
+- Added the regression harness to `prepublishOnly` so manual npm publishes run the same safety checks as CI.
+
+---
+
 ### v1.1.26
 
 **HomeKit Control**

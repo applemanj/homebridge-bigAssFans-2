@@ -226,6 +226,7 @@ async function testFanActiveDiagnosticsAreRecorded() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
+  state.enableDebugPort = true;
 
   await __test__.invokeSetFanActive(state as never, 1);
 
@@ -258,6 +259,7 @@ async function testDuplicateFanActiveWriteIsSuppressed() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
+  state.enableDebugPort = true;
   state.fanStates.RotationSpeed = 2;
 
   await __test__.invokeSetFanActive(state as never, 1);
@@ -271,6 +273,7 @@ async function testRotationSpeedDiagnosticsAreRecorded() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
+  state.enableDebugPort = true;
 
   await withImmediateTimeouts(async () => {
     await __test__.invokeSetRotationSpeed(state as never, 57);
@@ -325,6 +328,7 @@ async function testRotationSpeedIgnoresBriefStaleEchoes() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
+  state.enableDebugPort = true;
 
   await withImmediateTimeouts(async () => {
     await __test__.invokeSetRotationSpeed(state as never, 35);
@@ -388,6 +392,7 @@ async function testMatchingFanReportDuringDebounceIsAccepted() {
   const { state, infos } = createTestAccessoryState();
   const socket = new FakeSocket();
   state.client = socket;
+  state.enableDebugPort = true;
 
   const originalSetTimeout = global.setTimeout;
   const originalClearTimeout = global.clearTimeout;

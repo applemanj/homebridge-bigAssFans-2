@@ -532,7 +532,7 @@ export class BigAssFans_i6PlatformAccessory {
     // If homekit is telling us Active while it's in Auto Mode, it must be because we changed the speed so,
     // ignore this request.
     if (this.fanStates.TargetFanState === 1 && this.fanStates.Active === 1) {
-      this.platform.log.info(
+      diagnosticLog(this,
         `${this.Name} - active diagnostics: HomeKit requested Active=${this.fanStates.Active}, `
         + `targetFanState=${this.fanStates.TargetFanState}, rotationSpeed=${this.fanStates.RotationSpeed}; `
         + 'ignoring explicit active write while still in Auto mode',
@@ -544,7 +544,7 @@ export class BigAssFans_i6PlatformAccessory {
       this.lastFanActiveWriteValue === this.fanStates.Active
       && now - this.lastFanActiveWriteAt < FAN_ACTIVE_DEDUP_MS
     ) {
-      this.platform.log.info(
+      diagnosticLog(this,
         `${this.Name} - active diagnostics: suppressing duplicate Active=${this.fanStates.Active} `
         + `${now - this.lastFanActiveWriteAt}ms after the previous write`,
       );
@@ -555,7 +555,7 @@ export class BigAssFans_i6PlatformAccessory {
     this.lastFanActiveRequestValue = this.fanStates.Active;
     this.lastFanActiveWriteAt = now;
     this.lastFanActiveWriteValue = this.fanStates.Active;
-    this.platform.log.info(
+    diagnosticLog(this,
       `${this.Name} - active diagnostics: HomeKit requested Active=${this.fanStates.Active}, `
       + `targetFanState=${this.fanStates.TargetFanState}, rotationSpeed=${this.fanStates.RotationSpeed}, `
       + `payload=${Buffer.from(payload).toString('hex')}`,
@@ -1863,7 +1863,7 @@ function fanOnState(s: string, pA:BAF) {
 
   if (pA.lastFanActiveRequestAt !== 0) {
     const elapsedMs = Date.now() - pA.lastFanActiveRequestAt;
-    pA.platform.log.info(
+    diagnosticLog(pA,
       `${pA.Name} - active diagnostics: fan reported FanOn=${value} -> Active=${pA.fanStates.Active}, `
       + `TargetFanState=${pA.fanStates.TargetFanState} ${elapsedMs}ms after HomeKit requested `
       + `Active=${pA.lastFanActiveRequestValue}`,
@@ -1919,14 +1919,14 @@ function fanRotationSpeed(s: string, pA:BAF) {
       pA.lastRotationSpeedRequestPercent = requestedPercent;
       pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
       if (pendingPayload) {
-        pA.platform.log.info(
+        diagnosticLog(pA,
           `${pA.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
           + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
           + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,
         );
       }
     } else {
-      pA.platform.log.info(
+      diagnosticLog(pA,
         `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
         + `while debouncing HomeKit request for ${pA.expectedRotationSpeed} `
         + `(${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
@@ -1940,7 +1940,7 @@ function fanRotationSpeed(s: string, pA:BAF) {
     && now < pA.ignoreUnexpectedRotationSpeedUntil
     && value !== pA.expectedRotationSpeed
   ) {
-    pA.platform.log.info(
+    diagnosticLog(pA,
       `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
       + `while waiting for ${pA.expectedRotationSpeed} (${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
     );
@@ -1961,7 +1961,7 @@ function fanRotationSpeed(s: string, pA:BAF) {
   const speedPercent = rotationSpeedPercent(pA.fanStates.RotationSpeed);
   if (pA.lastRotationSpeedRequestAt !== 0) {
     const elapsedMs = Date.now() - pA.lastRotationSpeedRequestAt;
-    pA.platform.log.info(
+    diagnosticLog(pA,
       `${pA.Name} - speed diagnostics: fan reported ${value} (${speedPercent}%) `
       + `${elapsedMs}ms after HomeKit requested ${pA.lastRotationSpeedRequestPercent}% `
       + `-> device speed ${pA.lastRotationSpeedRequestDeviceSpeed}`,
@@ -2352,6 +2352,12 @@ function infoLogOnce(pA:BAF, logMessage: string) {
   }
 }
 
+function diagnosticLog(pA: BAF, logMessage: string) {
+  if (pA.enableDebugPort) {
+    pA.platform.log.info(logMessage);
+  }
+}
+
 function clearRotationSpeedDiagnostics(pA: BAF) {
   if (pA.pendingRotationSpeedWriteTimeout !== undefined) {
     clearTimeout(pA.pendingRotationSpeedWriteTimeout);
@@ -2389,7 +2395,7 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
     pA.lastRotationSpeedRequestAt = Date.now();
     pA.lastRotationSpeedRequestPercent = requestedPercent;
     pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
-    pA.platform.log.info(
+    diagnosticLog(pA,
       `${pA.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
       + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
       + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,

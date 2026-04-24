@@ -78,7 +78,7 @@
             },
             "probeFrequency": {
               "title": "Probe Frequency (ms)",
-              "description": "Keep-alive probe interval in milliseconds. Set to 0 to disable probing.",
+              "description": "Keep-alive and state refresh interval in milliseconds. Set to 0 to disable probing.",
               "type": "integer",
               "minimum": 0,
               "default": 60000

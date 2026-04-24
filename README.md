@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.26
+## homebridge-bigassfans-2 v1.1.27
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.27**
+- Gated the speed and on-off diagnostic timing logs behind `enableDebugPort` so normal installations stay quiet while troubleshooting remains available.
+- Updated the Homebridge UI schema wording for `probeFrequency` to reflect that it controls both keep-alive probes and state refreshes.
+- Added the regression harness to `prepublishOnly` so manual npm publishes run the same safety checks as CI.
 
 **v1.1.26**
 - Accepted matching fan speed reports that arrive during the debounce window instead of ignoring them as stale, which should prevent the first low-speed request from appearing to take a full probe cycle.
@@ -374,7 +379,7 @@ State changes made outside HomeKit, such as turning a fan on in the Big Ass Fans
 6. **If HomeKit shows stale state, `No Response`, or ignores control changes while the plugin logs still look healthy, reboot your Home Hubs** (Apple TV / HomePod). In testing, hub-side issues can mimic plugin control failures even when the fan connection and state polling are working normally.
 
 7. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
-8. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port listens on `127.0.0.1` only, and you will usually want to turn it back off after debugging.
+8. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port listens on `127.0.0.1` only, and you will usually want to turn it back off after debugging. Speed and on-off timing diagnostics are only logged when this option is enabled.
 
 ### Tips
 
