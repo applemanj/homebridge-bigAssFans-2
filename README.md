@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.27
+## homebridge-bigassfans-2 v1.1.28
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.28**
+- Improved the Homebridge Settings UI wording and validation for fan entries.
+- Changed downlight and uplight detection controls from ambiguous checkboxes to explicit `Auto Detect`, `Force Present`, and `Force Hidden` choices.
+- Added regression coverage so the new `auto` value behaves the same as omitting the override in manual config.
 
 **v1.1.27**
 - Gated the speed and on-off diagnostic timing logs behind `enableDebugPort` so normal installations stay quiet while troubleshooting remains available.
@@ -287,16 +292,22 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 - `noLights` if you want to hide all lighting services
 - `disableDirectionControl` if you want to hide reverse control
 - `showTemperature` or `showHumidity` if you want to override the default sensor exposure behavior
-- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan; omit these fields to use autodetection
+- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan; omit these fields or set them to `"auto"` to use autodetection
 
 ### Configuration Fields
 
-#### Required
+#### Required Platform Fields
 
 | Field | Description |
 |-------|-------------|
 | `platform` | Must be `"BigAssFans-i6"` |
-| `fans` | Array of fan objects |
+| `name` | Display name for this Homebridge platform instance |
+| `fans` | Array of fan objects to expose |
+
+#### Required Fan Fields
+
+| Field | Description |
+|-------|-------------|
 | `name` | Display name for the fan |
 | `ip` | IP address or hostname (mDNS `.local` names supported) |
 | `mac` | MAC address (found in the Big Ass Fans app under Wi-Fi settings) |
@@ -306,9 +317,9 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 | Field | Default | Description |
 |-------|---------|-------------|
 | `showFanAutoSwitch` | `false` | Add a legacy separate switch for Fan Auto (also available natively in fan tile via TargetFanState) |
-| `showLightAutoSwitch` | `false` | Add a switch for Light Auto mode |
-| `showDimToWarmSwitch` | `false` | Add a switch for Dim to Warm (i6 fans) |
-| `showEcoModeSwitch` | `false` | Add a switch for Eco Mode (Haiku fans) |
+| `showLightAutoSwitch` | `false` | Add a switch for Light Auto mode when the fan has lights |
+| `showDimToWarmSwitch` | `false` | Add a switch for Dim to Warm when supported by the fan |
+| `showEcoModeSwitch` | `false` | Add a switch for Eco Mode when supported by the fan |
 | `disableDirectionControl` | `false` | Hide the fan direction control |
 
 #### Advanced
@@ -316,17 +327,17 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 | Field | Default | Description |
 |-------|---------|-------------|
 | `probeFrequency` | `60000` | Keep-alive and state-refresh interval in milliseconds (`0` disables periodic probing) |
-| `noLights` | `false` | Hide all light controls |
-| `showHumidity` | `true` | Expose humidity sensor |
-| `showTemperature` | `true` | Expose temperature sensor |
-| `downlightEquipped` | auto | Override downlight detection with `true` or `false`; omit the field to use autodetection |
-| `uplightEquipped` | auto | Override uplight detection with `true` or `false`; omit the field to use autodetection |
+| `noLights` | `false` | Hide all light controls, including downlight, uplight, UVC, and standby LED controls |
+| `showHumidity` | `true` | Expose the humidity sensor when supported by the fan |
+| `showTemperature` | `true` | Expose the temperature sensor when supported by the fan |
+| `downlightEquipped` | `auto` | Downlight detection mode: omit the field or use `"auto"` for autodetection, `true` to force the downlight visible, or `false` to force it hidden |
+| `uplightEquipped` | `auto` | Uplight detection mode: omit the field or use `"auto"` for autodetection, `true` to force the uplight visible, or `false` to force it hidden |
 | `showFanOccupancySensor` | `false` | Expose fan occupancy sensor |
 | `showLightOccupancySensor` | `false` | Expose light occupancy sensor |
-| `showStandbyLED` | `false` | Expose night light / standby LED controls |
+| `showStandbyLED` | `false` | Expose night light / standby LED controls when supported by the fan |
 | `enableIncrementalButtons` | `false` | Add +/- buttons for brightness and fan speed |
 | `incrementalButtonsDelay` | `500` | Auto-reset delay for incremental buttons (ms) |
-| `enableDebugPort` | `false` | Enable a localhost-only TCP debug port for runtime debug level changes |
+| `enableDebugPort` | `false` | Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics |
 
 ### Migrating from homebridge-i6-bigassfans
 

@@ -1,6 +1,7 @@
 import type { API, Characteristic, Logger, PlatformConfig, Service } from 'homebridge';
 
 export type DebugLevelConfigEntry = [string, string | number];
+export type LightDetectionOverride = boolean | 'auto';
 
 export interface BigAssFansDeviceConfig {
   name: string;
@@ -8,8 +9,8 @@ export interface BigAssFansDeviceConfig {
   mac: string;
   debugLevels?: DebugLevelConfigEntry[];
   noLights?: boolean;
-  downlightEquipped?: boolean;
-  uplightEquipped?: boolean;
+  downlightEquipped?: LightDetectionOverride;
+  uplightEquipped?: LightDetectionOverride;
   whoosh?: boolean;
   showWhooshSwitch?: boolean;
   dimToWarm?: boolean;

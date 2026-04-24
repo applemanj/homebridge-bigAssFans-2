@@ -2,7 +2,7 @@
 
 import * as net from 'net';
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import type { BigAssFansAccessoryContext, BigAssFansPlatformContext } from './types';
+import type { BigAssFansAccessoryContext, BigAssFansPlatformContext, LightDetectionOverride } from './types';
 
 const MAXFANSPEED = 7;
 const ROTATION_SPEED_DEBOUNCE_MS = 125;
@@ -66,6 +66,10 @@ const capabilityKeys: Array<keyof Capabilities> = [
   'hasStandbyLED',
   'hasEcoMode',
 ];
+
+function normalizeLightDetectionOverride(value: LightDetectionOverride | undefined): boolean | undefined {
+  return value === 'auto' ? undefined : value;
+}
 
 /**
  * Accessory handler for a single Big Ass Fans i6/es6/Haiku ceiling fan.
@@ -270,11 +274,14 @@ export class BigAssFans_i6PlatformAccessory {
       this.noLights = true;  // defaults to false in property initialization
     }
 
-    if (device.downlightEquipped !== undefined) {
-      this.downlightEquipped = device.downlightEquipped;
+    const downlightOverride = normalizeLightDetectionOverride(device.downlightEquipped);
+    if (downlightOverride !== undefined) {
+      this.downlightEquipped = downlightOverride;
     }
-    if (device.uplightEquipped !== undefined) {
-      this.uplightEquipped = device.uplightEquipped;
+
+    const uplightOverride = normalizeLightDetectionOverride(device.uplightEquipped);
+    if (uplightOverride !== undefined) {
+      this.uplightEquipped = uplightOverride;
     }
 
     if (device.whoosh) {
@@ -3731,6 +3738,7 @@ export const __test__ = {
     );
   },
   networkSetup,
+  normalizeLightDetectionOverride,
   onData,
   percentToRotationSpeed,
   reconcileCapabilities,

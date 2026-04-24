@@ -53,8 +53,8 @@ function createTestAccessoryState() {
       enableDebugPort: false,
       fanAutoSwitchOn: false,
       showFanAutoSwitch: false,
-      downlightEquipped: undefined as boolean | undefined,
-      uplightEquipped: undefined as boolean | undefined,
+      downlightEquipped: undefined as boolean | 'auto' | undefined,
+      uplightEquipped: undefined as boolean | 'auto' | undefined,
       capabilities: {
         hasTempSensor: false,
         hasHumiditySensor: false,
@@ -494,6 +494,13 @@ function testDownlightOverrideWinsOverInference() {
   assert.equal(infos.length, 0);
 }
 
+function testAutoLightOverrideNormalizesToAutodetect() {
+  assert.equal(__test__.normalizeLightDetectionOverride('auto'), undefined);
+  assert.equal(__test__.normalizeLightDetectionOverride(true), true);
+  assert.equal(__test__.normalizeLightDetectionOverride(false), false);
+  assert.equal(__test__.normalizeLightDetectionOverride(undefined), undefined);
+}
+
 async function testReconnectOnClose() {
   const { state } = createTestAccessoryState();
   const originalSetTimeout = global.setTimeout;
@@ -609,6 +616,7 @@ async function main() {
   testFanUpdatesAreNotBlockedByUnknownTargetBulb();
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();
+  testAutoLightOverrideNormalizesToAutodetect();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

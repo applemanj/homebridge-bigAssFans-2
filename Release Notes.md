@@ -1,5 +1,16 @@
 ## Release Notes
 
+### v1.1.28
+
+**Admin UI**
+- Improved the Homebridge Settings UI wording and validation for fan entries.
+- Replaced ambiguous downlight/uplight override checkboxes with explicit `Auto Detect`, `Force Present`, and `Force Hidden` choices.
+- Added support for `"auto"` in manual config so the UI default behaves the same as omitting the override.
+- Clarified the README configuration tables so platform-level and per-fan required fields are documented separately.
+- Added regression coverage for light detection override normalization.
+
+---
+
 ### v1.1.27
 
 **Polish**

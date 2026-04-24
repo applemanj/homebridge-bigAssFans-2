@@ -19,7 +19,9 @@
       },
       "fans": {
         "title": "Fans",
+        "description": "Add one entry for each Big Ass Fans / Haiku fan you want to expose to HomeKit.",
         "type": "array",
+        "minItems": 1,
         "items": {
           "type": "object",
           "required": [
@@ -29,22 +31,23 @@
           ],
           "properties": {
             "name": {
-              "title": "Name",
-              "description": "Display name for the fan.",
+              "title": "Fan Name",
+              "description": "Display name for this fan in HomeKit.",
               "type": "string",
               "minLength": 1,
               "default": "i6 fan"
             },
             "ip": {
               "title": "Fan IP Address Or Hostname",
-              "description": "The IP address or hostname of the fan (supports mDNS .local hostnames).",
+              "description": "IP address, DNS hostname, or mDNS .local hostname for the fan.",
               "type": "string",
-              "format": "hostname"
+              "minLength": 1
             },
             "mac": {
               "title": "MAC Address",
-              "description": "The MAC address of the fan.",
-              "type": "string"
+              "description": "MAC address from the Big Ass Fans app Wi-Fi settings.",
+              "type": "string",
+              "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
             },
             "showFanAutoSwitch": {
               "title": "Fan Auto Switch (Legacy)",
@@ -54,19 +57,19 @@
             },
             "showLightAutoSwitch": {
               "title": "Light Auto Switch",
-              "description": "Add a switch for Light Auto mode.",
+              "description": "Add a switch for Light Auto mode when the fan has lights.",
               "type": "boolean",
               "default": false
             },
             "showDimToWarmSwitch": {
               "title": "Dim To Warm Switch",
-              "description": "Add a switch for Dim to Warm.",
+              "description": "Add a switch for Dim to Warm when supported by the fan.",
               "type": "boolean",
               "default": false
             },
             "showEcoModeSwitch": {
               "title": "Eco Mode Switch",
-              "description": "Add a switch for Eco Mode.",
+              "description": "Add a switch for Eco Mode when supported by the fan.",
               "type": "boolean",
               "default": false
             },
@@ -85,7 +88,7 @@
             },
             "noLights": {
               "title": "Hide Light Controls",
-              "description": "Hide all light-related services for this fan.",
+              "description": "Hide all light-related services for this fan, including downlight, uplight, UVC, and standby LED controls.",
               "type": "boolean",
               "default": false
             },
@@ -102,14 +105,54 @@
               "default": true
             },
             "downlightEquipped": {
-              "title": "Override Downlight Detection",
-              "description": "Override automatic downlight detection.",
-              "type": "boolean"
+              "title": "Downlight Detection",
+              "description": "Use Auto Detect unless the plugin guesses wrong. Force Present exposes a downlight; Force Hidden hides it.",
+              "default": "auto",
+              "oneOf": [
+                {
+                  "title": "Auto Detect",
+                  "enum": [
+                    "auto"
+                  ]
+                },
+                {
+                  "title": "Force Present",
+                  "enum": [
+                    true
+                  ]
+                },
+                {
+                  "title": "Force Hidden",
+                  "enum": [
+                    false
+                  ]
+                }
+              ]
             },
             "uplightEquipped": {
-              "title": "Override Uplight Detection",
-              "description": "Override automatic uplight detection.",
-              "type": "boolean"
+              "title": "Uplight Detection",
+              "description": "Use Auto Detect unless the plugin guesses wrong. Force Present exposes an uplight; Force Hidden hides it.",
+              "default": "auto",
+              "oneOf": [
+                {
+                  "title": "Auto Detect",
+                  "enum": [
+                    "auto"
+                  ]
+                },
+                {
+                  "title": "Force Present",
+                  "enum": [
+                    true
+                  ]
+                },
+                {
+                  "title": "Force Hidden",
+                  "enum": [
+                    false
+                  ]
+                }
+              ]
             },
             "showFanOccupancySensor": {
               "title": "Show Fan Occupancy Sensor",
@@ -125,26 +168,26 @@
             },
             "showStandbyLED": {
               "title": "Show Standby LED Controls",
-              "description": "Expose night light / standby LED controls when supported by the fan.",
+              "description": "Expose night light / standby LED controls when supported by the fan. Hidden if Hide Light Controls is enabled.",
               "type": "boolean",
               "default": false
             },
             "enableIncrementalButtons": {
               "title": "Enable +/- Buttons",
-              "description": "Add +/- buttons for brightness and fan speed.",
+              "description": "Add momentary +/- buttons for brightness and fan speed.",
               "type": "boolean",
               "default": false
             },
             "incrementalButtonsDelay": {
               "title": "Incremental Button Reset Delay (ms)",
-              "description": "Auto-reset delay for incremental buttons in milliseconds.",
+              "description": "Auto-reset delay for the optional +/- buttons in milliseconds.",
               "type": "integer",
               "minimum": 0,
               "default": 500
             },
             "enableDebugPort": {
               "title": "Enable Debug Port",
-              "description": "Enable a localhost-only TCP debug port for runtime debug level changes.",
+              "description": "Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics. Leave off for normal use.",
               "type": "boolean",
               "default": false
             }
