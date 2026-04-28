@@ -866,7 +866,7 @@ function describeLiveExposure(live) {
 
 function describeLiveGuidance(live) {
   if (Array.isArray(live?.suggestionsApplied) && live.suggestionsApplied.length > 0) {
-    return `Applied suggested settings: ${live.suggestionsApplied.join(", ")}. Save settings to persist.`;
+    return `Applied suggested settings: ${live.suggestionsApplied.join(", ")}. Save settings and restart the child bridge to remove HomeKit services.`;
   }
 
   const suggestions = getLiveSuggestions(live);
@@ -913,7 +913,7 @@ function applyCapabilitySuggestions(index) {
 
   render();
   highlightSuggestedFields(index, suggestions);
-  showToast("success", `Applied ${suggestions.length} suggested ${suggestions.length === 1 ? "setting" : "settings"}. Save settings to persist.`);
+  showToast("success", `Applied ${suggestions.length} suggested ${suggestions.length === 1 ? "setting" : "settings"}. Save settings and restart the child bridge.`);
 }
 
 function highlightSuggestedFields(index, suggestions) {

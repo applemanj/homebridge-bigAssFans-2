@@ -1079,6 +1079,8 @@ function makeServices(pA: BAF) {
     if (pA.showLightOccupancySensor) {
       pA.platform.log.info('\'"showLightOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
     }
+    zapService(pA, 'fanOccupancySensor');
+    zapService(pA, 'lightOccupancySensor');
   }
 
   // downlight
@@ -1139,6 +1141,7 @@ function makeServices(pA: BAF) {
   if (pA.capabilities.hasUVCLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} UVC light disabled by configuration '"noLights": true'`);
+      zapService(pA, 'UVCSwitch');
     } else {
       if (pA.UVCSwitchService === undefined) {
         pA.UVCSwitchService = pA.accessory.getService('UVCSwitch') ||
@@ -1150,6 +1153,8 @@ function makeServices(pA: BAF) {
           .onGet(pA.getUVCSwitchOnState.bind(pA));
       }
     }
+  } else {
+    zapService(pA, 'UVCSwitch');
   }
 
   // Current Temperature
@@ -1167,6 +1172,11 @@ function makeServices(pA: BAF) {
       if (service) {
         pA.accessory.removeService(service);
       }
+    }
+  } else {
+    const service = pA.accessory.getService(pA.platform.Service.TemperatureSensor);
+    if (service) {
+      pA.accessory.removeService(service);
     }
   }
 
@@ -1225,6 +1235,7 @@ function makeServices(pA: BAF) {
         .onGet(pA.getEcoModeSwitchOnState.bind(pA));
     } else {
       pA.platform.log.info(`'"showEcoModeSwitch": true' in config.json but this fan (${pA.Name}) does not support Eco Mode`);
+      zapService(pA, 'ecoModeSwitch');
     }
   } else {
     zapService(pA, 'ecoModeSwitch');
@@ -3613,6 +3624,7 @@ export const __test__ = {
   },
   networkSetup,
   normalizeLightDetectionOverride,
+  makeServices,
   onData,
   percentToRotationSpeed,
   reconcileCapabilities,

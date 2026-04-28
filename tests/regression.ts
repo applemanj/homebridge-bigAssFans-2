@@ -31,6 +31,64 @@ class FakeSocket extends EventEmitter {
   }
 }
 
+class FakeService {
+  public characteristics = new Set<string>();
+
+  constructor(public readonly name: string) {}
+
+  setCharacteristic(characteristic: string, _value: unknown) {
+    this.characteristics.add(characteristic);
+    return this;
+  }
+
+  testCharacteristic(characteristic: string) {
+    return this.characteristics.has(characteristic);
+  }
+
+  addCharacteristic(characteristic: string) {
+    this.characteristics.add(characteristic);
+    return this;
+  }
+
+  getCharacteristic(_characteristic: string) {
+    return {
+      onGet() {
+        return this;
+      },
+      onSet() {
+        return this;
+      },
+    };
+  }
+}
+
+class FakeAccessory {
+  public services = new Map<string, FakeService>();
+
+  constructor() {
+    this.services.set('AccessoryInformation', new FakeService('AccessoryInformation'));
+  }
+
+  getService(name: string) {
+    return this.services.get(name);
+  }
+
+  addService(_type: string, name?: string) {
+    const serviceName = name || _type;
+    const service = new FakeService(serviceName);
+    this.services.set(serviceName, service);
+    return service;
+  }
+
+  removeService(service: FakeService) {
+    for (const [name, existingService] of this.services.entries()) {
+      if (existingService === service) {
+        this.services.delete(name);
+      }
+    }
+  }
+}
+
 function createTestAccessoryState() {
   const warnings: string[] = [];
   const debugs: string[] = [];
@@ -136,6 +194,86 @@ function createTestAccessoryState() {
         },
       },
     },
+  };
+}
+
+function createTestServiceState() {
+  const logs: string[] = [];
+  const accessory = new FakeAccessory();
+  [
+    'fanOccupancySensor',
+    'lightOccupancySensor',
+    'TemperatureSensor',
+    'HumiditySensor',
+    'UVCSwitch',
+    'ecoModeSwitch',
+  ].forEach((name) => {
+    accessory.services.set(name, new FakeService(name));
+  });
+
+  return {
+    accessory,
+    state: {
+      accessory,
+      Name: 'Test Fan',
+      MAC: '20:F8:5E:00:00:00',
+      noLights: false,
+      showFanOccupancySensor: true,
+      showLightOccupancySensor: true,
+      showTemperature: true,
+      showHumidity: true,
+      showEcoModeSwitch: true,
+      showStandbyLED: false,
+      enableIncrementalButtons: false,
+      capabilities: {
+        hasTempSensor: false,
+        hasHumiditySensor: false,
+        hasOccupancySensor: false,
+        hasLight: false,
+        hasLightSensor: false,
+        hasColorTempControl: false,
+        hasFan: false,
+        hasSpeaker: false,
+        hasPiezo: false,
+        hasLEDIndicators: false,
+        hasUplight: false,
+        hasUVCLight: false,
+        hasStandbyLED: false,
+        hasEcoMode: false,
+      },
+      debugLevels: {
+        newcode: 0,
+        progress: 0,
+      },
+      lastDebugMessage: '',
+      lastDebugMessageTag: '',
+      messagesLogged: new Set<string>(),
+      platform: {
+        Service: {
+          AccessoryInformation: 'AccessoryInformation',
+          Fan: 'Fan',
+          Fanv2: 'Fanv2',
+          Lightbulb: 'Lightbulb',
+          Switch: 'Switch',
+          OccupancySensor: 'OccupancySensor',
+          TemperatureSensor: 'TemperatureSensor',
+          HumiditySensor: 'HumiditySensor',
+        },
+        Characteristic: {
+          Manufacturer: 'Manufacturer',
+          SerialNumber: 'SerialNumber',
+          Name: 'Name',
+          ConfiguredName: 'ConfiguredName',
+        },
+        log: {
+          warn: (message: string) => logs.push(message),
+          error: (message: string) => logs.push(message),
+          info: (message: string) => logs.push(message),
+          debug: (message: string) => logs.push(message),
+        },
+      },
+    },
+    logs,
   };
 }
 
@@ -585,6 +723,19 @@ function testCapabilitySuggestionsOnlyHideUnsupportedOptions() {
   assert.equal(suggestions.some((suggestion) => suggestion.key === 'noLights'), false);
 }
 
+function testUnsupportedCapabilityServicesAreRemovedFromCache() {
+  const { accessory, state } = createTestServiceState();
+
+  __test__.makeServices(state as never);
+
+  assert.equal(accessory.services.has('fanOccupancySensor'), false);
+  assert.equal(accessory.services.has('lightOccupancySensor'), false);
+  assert.equal(accessory.services.has('TemperatureSensor'), false);
+  assert.equal(accessory.services.has('HumiditySensor'), false);
+  assert.equal(accessory.services.has('UVCSwitch'), false);
+  assert.equal(accessory.services.has('ecoModeSwitch'), false);
+}
+
 async function testReconnectOnClose() {
   const { state } = createTestAccessoryState();
   const originalSetTimeout = global.setTimeout;
@@ -703,6 +854,7 @@ async function main() {
   testAutoLightOverrideNormalizesToAutodetect();
   testCapabilityParserExtractsLiveCapabilities();
   testCapabilitySuggestionsOnlyHideUnsupportedOptions();
+  testUnsupportedCapabilityServicesAreRemovedFromCache();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

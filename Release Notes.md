@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.36
+
+**HomeKit Service Cleanup**
+- Removed stale HomeKit services from cached accessories when a fan does not report temperature, occupancy, UVC, or Eco Mode support.
+- Clarified that suggested settings remove services after saving settings and restarting the child bridge.
+
+---
+
 ### v1.1.35
 
 **Apply Suggestions Feedback**
