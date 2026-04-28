@@ -36,6 +36,13 @@ export interface CapabilityExposureSummary {
   notReportedButEnabled: string[];
 }
 
+export interface CapabilityConfigSuggestion {
+  key: keyof CapabilityExposureConfig;
+  value: boolean | 'auto';
+  label: string;
+  reason: string;
+}
+
 export const capabilityKeys: Array<keyof Capabilities> = [
   'hasTempSensor',
   'hasHumiditySensor',
@@ -228,6 +235,64 @@ export function summarizeCapabilityExposure(
   return { detected, exposed, hiddenByConfig, notReportedButEnabled };
 }
 
+export function suggestCapabilityConfig(
+  capabilities: Capabilities,
+  config: CapabilityExposureConfig = {},
+): CapabilityConfigSuggestion[] {
+  const suggestions: CapabilityConfigSuggestion[] = [];
+
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasTempSensor && config.showTemperature !== false,
+    'showTemperature',
+    false,
+    'Hide temperature sensor',
+    'This fan did not report a temperature sensor.',
+  );
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasHumiditySensor && config.showHumidity !== false,
+    'showHumidity',
+    false,
+    'Hide humidity sensor',
+    'This fan did not report a humidity sensor.',
+  );
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasOccupancySensor && config.showFanOccupancySensor === true,
+    'showFanOccupancySensor',
+    false,
+    'Hide fan occupancy sensor',
+    'This fan did not report an occupancy sensor.',
+  );
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasOccupancySensor && config.showLightOccupancySensor === true,
+    'showLightOccupancySensor',
+    false,
+    'Hide light occupancy sensor',
+    'This fan did not report an occupancy sensor.',
+  );
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasStandbyLED && config.showStandbyLED === true,
+    'showStandbyLED',
+    false,
+    'Hide standby LED controls',
+    'This fan did not report standby LED support.',
+  );
+  addMissingCapabilitySuggestion(
+    suggestions,
+    !capabilities.hasEcoMode && config.showEcoModeSwitch === true,
+    'showEcoModeSwitch',
+    false,
+    'Hide Eco Mode switch',
+    'This fan did not report Eco Mode support.',
+  );
+
+  return suggestions;
+}
+
 export function parseCapabilitiesFromSlipData(data: Buffer): Capabilities | undefined {
   for (const frame of extractSlipFrames(data)) {
     const capabilities = parseCapabilitiesFromPayload(frame);
@@ -236,6 +301,19 @@ export function parseCapabilitiesFromSlipData(data: Buffer): Capabilities | unde
     }
   }
   return undefined;
+}
+
+function addMissingCapabilitySuggestion(
+  suggestions: CapabilityConfigSuggestion[],
+  condition: boolean,
+  key: keyof CapabilityExposureConfig,
+  value: boolean | 'auto',
+  label: string,
+  reason: string,
+) {
+  if (condition) {
+    suggestions.push({ key, value, label, reason });
+  }
 }
 
 export function extractSlipFrames(data: Buffer): Buffer[] {

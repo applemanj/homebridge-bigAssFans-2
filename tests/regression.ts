@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import * as net from 'net';
 
 import { __test__ } from '../src/platformAccessory';
-import { parseCapabilitiesFromSlipData, summarizeCapabilityExposure } from '../src/protocol';
+import { parseCapabilitiesFromSlipData, suggestCapabilityConfig, summarizeCapabilityExposure } from '../src/protocol';
 
 class FakeSocket extends EventEmitter {
   public writes: Buffer[] = [];
@@ -551,6 +551,40 @@ function testCapabilityParserExtractsLiveCapabilities() {
   assert.deepEqual(summary.notReportedButEnabled, ['temperature', 'humidity']);
 }
 
+function testCapabilitySuggestionsOnlyHideUnsupportedOptions() {
+  const suggestions = suggestCapabilityConfig({
+    hasTempSensor: false,
+    hasHumiditySensor: false,
+    hasOccupancySensor: false,
+    hasLight: true,
+    hasLightSensor: false,
+    hasColorTempControl: true,
+    hasFan: true,
+    hasSpeaker: false,
+    hasPiezo: false,
+    hasLEDIndicators: false,
+    hasUplight: false,
+    hasUVCLight: false,
+    hasStandbyLED: false,
+    hasEcoMode: false,
+  }, {
+    showTemperature: true,
+    showHumidity: true,
+    showFanOccupancySensor: true,
+    showEcoModeSwitch: true,
+    noLights: true,
+  });
+
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.key), [
+    'showTemperature',
+    'showHumidity',
+    'showFanOccupancySensor',
+    'showEcoModeSwitch',
+  ]);
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.value), [false, false, false, false]);
+  assert.equal(suggestions.some((suggestion) => suggestion.key === 'noLights'), false);
+}
+
 async function testReconnectOnClose() {
   const { state } = createTestAccessoryState();
   const originalSetTimeout = global.setTimeout;
@@ -668,6 +702,7 @@ async function main() {
   testDownlightOverrideWinsOverInference();
   testAutoLightOverrideNormalizesToAutodetect();
   testCapabilityParserExtractsLiveCapabilities();
+  testCapabilitySuggestionsOnlyHideUnsupportedOptions();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

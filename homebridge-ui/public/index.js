@@ -720,6 +720,7 @@ function renderDiagnostics() {
 function createDiagnosticCard(fan, index) {
   const errors = getFanErrors(fan);
   const live = state.diagnostics.devices[index]?.result;
+  const suggestions = getLiveSuggestions(live);
   const card = document.createElement("article");
   card.className = "diagnostic-device";
 
@@ -761,6 +762,19 @@ function createDiagnosticCard(fan, index) {
   });
 
   card.append(header, list);
+
+  if (suggestions.length > 0) {
+    const actions = document.createElement("div");
+    actions.className = "actions diagnostic-actions";
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "secondary";
+    apply.textContent = `Apply ${suggestions.length} Suggested ${suggestions.length === 1 ? "Setting" : "Settings"}`;
+    apply.addEventListener("click", () => applyCapabilitySuggestions(index));
+    actions.appendChild(apply);
+    card.appendChild(actions);
+  }
+
   return card;
 }
 
@@ -851,6 +865,11 @@ function describeLiveExposure(live) {
 }
 
 function describeLiveGuidance(live) {
+  const suggestions = getLiveSuggestions(live);
+  if (suggestions.length > 0) {
+    return `Suggested updates: ${suggestions.map((suggestion) => suggestion.label).join(", ")}.`;
+  }
+
   const missing = live?.capabilitySummary?.notReportedButEnabled;
   if (Array.isArray(missing) && missing.length > 0) {
     return `Configured but not reported by fan: ${missing.join(", ")}.`;
@@ -859,6 +878,33 @@ function describeLiveGuidance(live) {
     return "Configured options match the fan capability report.";
   }
   return "Run Test Connection or Test All Fans to compare settings with live fan capabilities.";
+}
+
+function getLiveSuggestions(live) {
+  return Array.isArray(live?.capabilitySuggestions) ? live.capabilitySuggestions : [];
+}
+
+function applyCapabilitySuggestions(index) {
+  updateConfigFromForm(false);
+  const fan = state.config.fans[index];
+  const suggestions = getLiveSuggestions(state.diagnostics.devices[index]?.result);
+
+  if (!fan || suggestions.length === 0) {
+    showToast("warning", "No suggested settings are available for this fan.");
+    return;
+  }
+
+  suggestions.forEach((suggestion) => {
+    if (suggestion.value === "auto") {
+      delete fan[suggestion.key];
+    } else {
+      fan[suggestion.key] = suggestion.value;
+    }
+  });
+
+  clearLiveDiagnostic(index);
+  render();
+  showToast("success", `Applied ${suggestions.length} suggested ${suggestions.length === 1 ? "setting" : "settings"}. Save settings to persist.`);
 }
 
 function clearLiveDiagnostic(index) {

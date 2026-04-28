@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.34
+
+**Actionable Capability Diagnostics**
+- Added conservative **Apply Suggested Settings** actions in the admin diagnostics cards for options the fan does not report.
+- Suggestions only hide unsupported sensor/optional-service settings; they do not automatically enable optional services or override intentional light-control choices.
+- Added shared suggestion logic and regression coverage for the capability cleanup path.
+
+---
+
 ### v1.1.33
 
 **Capability-Aware Diagnostics**

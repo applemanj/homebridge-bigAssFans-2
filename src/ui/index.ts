@@ -2,8 +2,10 @@ import * as net from 'net';
 import {
   applyCapabilityConfig,
   parseCapabilitiesFromSlipData,
+  suggestCapabilityConfig,
   summarizeCapabilityExposure,
   type Capabilities,
+  type CapabilityConfigSuggestion,
   type CapabilityExposureConfig,
   type CapabilityExposureSummary,
 } from '../protocol';
@@ -47,6 +49,7 @@ interface ConnectionDiagnostic {
   errorCode?: string;
   capabilities?: Capabilities;
   capabilitySummary?: CapabilityExposureSummary;
+  capabilitySuggestions?: CapabilityConfigSuggestion[];
   capabilityMessage?: string;
 }
 
@@ -280,7 +283,7 @@ function testFanConnection(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT
 function getCapabilityDetails(
   data: Buffer,
   fan: NormalizedFanConfig,
-): Pick<ConnectionDiagnostic, 'capabilities' | 'capabilitySummary' | 'capabilityMessage'> {
+): Pick<ConnectionDiagnostic, 'capabilities' | 'capabilitySummary' | 'capabilitySuggestions' | 'capabilityMessage'> {
   const rawCapabilities = parseCapabilitiesFromSlipData(data);
   if (!rawCapabilities) {
     return {
@@ -290,6 +293,7 @@ function getCapabilityDetails(
 
   const capabilities = applyCapabilityConfig(rawCapabilities, fan);
   const capabilitySummary = summarizeCapabilityExposure(rawCapabilities, fan);
+  const capabilitySuggestions = suggestCapabilityConfig(rawCapabilities, fan);
   const detected = capabilitySummary.detected.length > 0
     ? capabilitySummary.detected.join(', ')
     : 'none';
@@ -297,6 +301,7 @@ function getCapabilityDetails(
   return {
     capabilities,
     capabilitySummary,
+    capabilitySuggestions,
     capabilityMessage: `Detected capabilities: ${detected}.`,
   };
 }

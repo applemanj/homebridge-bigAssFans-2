@@ -411,6 +411,10 @@ button:disabled {
   word-break: break-word;
 }
 
+.diagnostic-actions {
+  margin-top: 16px;
+}
+
 @keyframes slide-in {
   from {
     transform: translateY(10px);
