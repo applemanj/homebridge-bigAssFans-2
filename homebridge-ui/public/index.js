@@ -7,7 +7,6 @@ const elements = {
   fansEmpty: document.getElementById("fans-empty"),
   fansList: document.getElementById("fans-list"),
   addFan: document.getElementById("add-fan"),
-  addFanTop: document.getElementById("add-fan-top"),
   saveSettingsTop: document.getElementById("save-settings-top"),
   toastContainer: document.getElementById("toast-container"),
   refreshDiagnostics: document.getElementById("refresh-diagnostics"),
@@ -703,7 +702,6 @@ function init() {
   });
 
   elements.addFan.addEventListener("click", addFan);
-  elements.addFanTop.addEventListener("click", addFan);
   elements.saveSettingsTop.addEventListener("click", () => {
     saveSettings().catch(() => {
       showToast("error", "Failed to save settings.");

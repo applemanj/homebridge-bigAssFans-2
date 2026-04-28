@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.30
+
+**Admin UI**
+- Updated the custom admin UI to inherit Homebridge's active light/dark theme instead of forcing a separate dark design.
+- Replaced hard-coded panel, input, and text colors with semantic plugin variables and translucent theme-friendly surfaces.
+- Removed the duplicate Add Fan action from the Platform panel and promoted the Fans panel action.
+
+---
+
 ### v1.1.29
 
 **Admin UI**

@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.29
+## homebridge-bigassfans-2 v1.1.30
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.30**
+- Updated the custom admin UI to inherit Homebridge's light/dark theme instead of forcing a separate dark design.
+- Kept custom styling focused on fan cards, diagnostics, status pills, and workflow affordances.
+- Removed the duplicate Add Fan action from the Platform panel and made the Fans panel action clearer.
 
 **v1.1.29**
 - Added a custom Homebridge Settings UI modeled after the `homebridge-roborock-vacuum2` admin experience.
