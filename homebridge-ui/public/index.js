@@ -865,6 +865,10 @@ function describeLiveExposure(live) {
 }
 
 function describeLiveGuidance(live) {
+  if (Array.isArray(live?.suggestionsApplied) && live.suggestionsApplied.length > 0) {
+    return `Applied suggested settings: ${live.suggestionsApplied.join(", ")}. Save settings to persist.`;
+  }
+
   const suggestions = getLiveSuggestions(live);
   if (suggestions.length > 0) {
     return `Suggested updates: ${suggestions.map((suggestion) => suggestion.label).join(", ")}.`;
@@ -902,9 +906,34 @@ function applyCapabilitySuggestions(index) {
     }
   });
 
-  clearLiveDiagnostic(index);
+  if (state.diagnostics.devices[index]?.result) {
+    state.diagnostics.devices[index].result.capabilitySuggestions = [];
+    state.diagnostics.devices[index].result.suggestionsApplied = suggestions.map((suggestion) => suggestion.label);
+  }
+
   render();
+  highlightSuggestedFields(index, suggestions);
   showToast("success", `Applied ${suggestions.length} suggested ${suggestions.length === 1 ? "setting" : "settings"}. Save settings to persist.`);
+}
+
+function highlightSuggestedFields(index, suggestions) {
+  const card = elements.fansList.querySelector(`[data-fan-index="${index}"]`);
+  if (!card) {
+    return;
+  }
+
+  suggestions.forEach((suggestion) => {
+    const control = card.querySelector(`[data-fan-field="${suggestion.key}"]`);
+    const wrapper = control?.closest(".checkbox") || control?.closest(".field");
+    if (!wrapper) {
+      return;
+    }
+
+    wrapper.classList.add("suggestion-applied");
+    setTimeout(() => {
+      wrapper.classList.remove("suggestion-applied");
+    }, 2400);
+  });
 }
 
 function clearLiveDiagnostic(index) {

@@ -153,6 +153,14 @@ header h1 {
   opacity: 0.46;
 }
 
+.field.suggestion-applied,
+.checkbox.suggestion-applied {
+  border-radius: 0.6rem;
+  outline: 2px solid var(--plugin-accent-border);
+  outline-offset: 6px;
+  transition: outline-color 0.3s ease;
+}
+
 .checkbox {
   display: flex;
   align-items: flex-start;

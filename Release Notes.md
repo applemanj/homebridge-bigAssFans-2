@@ -1,5 +1,13 @@
 ## Release Notes
 
+### v1.1.35
+
+**Apply Suggestions Feedback**
+- Kept diagnostics visible after applying suggested settings so the card confirms which suggestions were applied.
+- Briefly highlights the changed fan settings after applying suggestions.
+
+---
+
 ### v1.1.34
 
 **Actionable Capability Diagnostics**

@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.34
+## homebridge-bigassfans-2 v1.1.35
 
 </span>
 
@@ -37,6 +37,9 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.35**
+- Improved **Apply Suggested Settings** feedback so the diagnostics card confirms applied suggestions and the changed fan settings are briefly highlighted.
 
 **v1.1.34**
 - Added conservative one-click admin UI suggestions for live diagnostics. When a fan does not report an enabled sensor or optional switch capability, the diagnostics card can apply the safer hidden setting and prompt you to save.
@@ -377,7 +380,7 @@ The custom Settings UI diagnostics panel summarizes each configured fan, require
 
 When a fan includes a capability report in the diagnostic response, the UI also shows detected fan capabilities, which services those capabilities expose or hide with the current config, and guidance for options that are enabled in config but not reported by that fan.
 
-If diagnostics find enabled options that the fan does not report, the card may show **Apply Suggested Settings**. This only applies conservative cleanup suggestions, such as hiding unsupported temperature, humidity, occupancy, standby LED, or Eco Mode options. It does not automatically enable optional services or undo intentional light-control overrides. Save settings afterward to persist the suggested changes.
+If diagnostics find enabled options that the fan does not report, the card may show **Apply Suggested Settings**. This only applies conservative cleanup suggestions, such as hiding unsupported temperature, humidity, occupancy, standby LED, or Eco Mode options. It does not automatically enable optional services or undo intentional light-control overrides. After applying suggestions, the diagnostics card confirms what changed and the matching fan settings are briefly highlighted. Save settings afterward to persist the suggested changes.
 
 Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
 
