@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.31
+
+**Admin UI Diagnostics**
+- Added a Homebridge custom UI server for live diagnostics.
+- Added per-fan **Test Connection** and diagnostics-level **Test All Fans** actions.
+- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report response status, latency, and bytes received.
+
+---
+
 ### v1.1.30
 
 **Admin UI**

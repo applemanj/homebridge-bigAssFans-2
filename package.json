@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Big Ass Fans (Homebridge 2)",
   "name": "homebridge-bigassfans-2",
-  "version": "1.1.30",
+  "version": "1.1.31",
   "description": "Homebridge 2.0 plugin for Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series.",
   "author": "applemanj",
   "contributors": [
@@ -52,5 +52,8 @@
     "rimraf": "^6.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "^2.2.3"
   }
 }

@@ -22,6 +22,10 @@ const state = {
     name: DEFAULT_PLATFORM_NAME,
     fans: [],
   },
+  diagnostics: {
+    generatedAt: undefined,
+    devices: [],
+  },
 };
 
 const fanDefaults = {
@@ -143,6 +147,24 @@ function showToast(type, message) {
   }, 4000);
 }
 
+async function request(path, body) {
+  if (
+    !window.homebridge ||
+    typeof window.homebridge.request !== "function"
+  ) {
+    return {
+      ok: false,
+      message: "Homebridge UI request API is unavailable in preview.",
+    };
+  }
+
+  try {
+    return await window.homebridge.request(path, body);
+  } catch (error) {
+    return { ok: false, message: error.message || "Request failed." };
+  }
+}
+
 async function loadConfig() {
   if (
     window.homebridge &&
@@ -237,22 +259,34 @@ function createFanCard(fan, index) {
 
   const actions = document.createElement("div");
   actions.className = "actions";
+  const test = document.createElement("button");
+  test.type = "button";
+  test.className = "secondary";
+  test.textContent = "Test Connection";
+  test.addEventListener("click", () => {
+    testConnection(index, test).catch(() => {
+      showToast("error", "Connection test failed.");
+    });
+  });
+
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "danger";
   remove.textContent = "Remove Fan";
   remove.addEventListener("click", () => removeFan(index));
-  actions.appendChild(remove);
+  actions.append(test, remove);
   card.appendChild(actions);
 
   card.addEventListener("input", () => {
     updateConfigFromForm(false);
+    clearLiveDiagnostic(index);
     refreshFanCardStatus(card);
     updateConfigStatus();
     renderDiagnostics();
   });
   card.addEventListener("change", () => {
     updateConfigFromForm(false);
+    clearLiveDiagnostic(index);
     refreshFanCardStatus(card);
     updateConfigStatus();
     renderDiagnostics();
@@ -421,6 +455,7 @@ function addFan() {
 function removeFan(index) {
   updateConfigFromForm(false);
   state.config.fans.splice(index, 1);
+  state.diagnostics.devices.splice(index, 1);
   render();
   showToast("warning", "Fan removed. Save settings to apply.");
 }
@@ -560,6 +595,81 @@ async function saveSettings() {
   render();
 }
 
+async function testConnection(index, button) {
+  updateConfigFromForm(false);
+  const fan = state.config.fans[index];
+  if (!fan) {
+    showToast("error", "Fan not found.");
+    return;
+  }
+
+  setButtonBusy(button, "Testing...");
+  const result = await request("/fan/test-connection", { fan });
+  restoreButton(button, "Test Connection");
+
+  if (!result.ok) {
+    showToast("error", result.message || "Connection test failed.");
+    return;
+  }
+
+  state.diagnostics.devices[index] = {
+    index,
+    fan,
+    result: result.result,
+  };
+  state.diagnostics.generatedAt = result.result?.checkedAt;
+  renderDiagnostics();
+  refreshFanCardStatusForIndex(index);
+
+  if (result.result?.ok) {
+    showToast("success", `${fan.name || "Fan"} responded.`);
+  } else {
+    showToast("warning", result.result?.message || `${fan.name || "Fan"} did not respond.`);
+  }
+}
+
+async function loadLiveDiagnostics(button) {
+  updateConfigFromForm(false);
+  if (state.config.fans.length === 0) {
+    renderDiagnostics();
+    showToast("warning", "Add a fan before testing connectivity.");
+    return;
+  }
+
+  setButtonBusy(button, "Testing...");
+  const result = await request("/diagnostics/state", { fans: state.config.fans });
+  restoreButton(button, "Test All Fans");
+
+  if (!result.ok) {
+    showToast("error", result.message || "Failed to load live diagnostics.");
+    return;
+  }
+
+  state.diagnostics = {
+    generatedAt: result.generatedAt,
+    devices: result.devices || [],
+  };
+  renderDiagnostics();
+  renderFans();
+  showToast("success", "Live diagnostics refreshed.");
+}
+
+function setButtonBusy(button, text) {
+  if (!button) {
+    return;
+  }
+  button.disabled = true;
+  button.textContent = text;
+}
+
+function restoreButton(button, text) {
+  if (!button) {
+    return;
+  }
+  button.disabled = false;
+  button.textContent = text;
+}
+
 function updateConfigStatus() {
   const errors = updateConfigFromForm(false);
   const fanCount = state.config.fans.length;
@@ -595,7 +705,12 @@ function renderDiagnostics() {
   elements.diagnosticsEmpty.classList.add("hidden");
   const invalidCount = state.config.fans.filter((fan) => getFanErrors(fan).length > 0).length;
   const debugCount = state.config.fans.filter((fan) => fan.enableDebugPort === true).length;
-  elements.diagnosticsSummary.textContent = `${fanCount} configured fan(s), ${invalidCount} needing required details, ${debugCount} with debug port enabled.`;
+  const liveCount = state.diagnostics.devices.filter((device) => device?.result).length;
+  const liveSummary = liveCount > 0
+    ? `${liveCount} live check(s), last checked ${formatTimestamp(state.diagnostics.generatedAt)}`
+    : "no live checks yet";
+  elements.diagnosticsSummary.textContent =
+    `${fanCount} configured fan(s), ${invalidCount} needing required details, ${debugCount} with debug port enabled, ${liveSummary}.`;
 
   state.config.fans.forEach((fan, index) => {
     elements.diagnosticsList.appendChild(createDiagnosticCard(fan, index));
@@ -604,6 +719,7 @@ function renderDiagnostics() {
 
 function createDiagnosticCard(fan, index) {
   const errors = getFanErrors(fan);
+  const live = state.diagnostics.devices[index]?.result;
   const card = document.createElement("article");
   card.className = "diagnostic-device";
 
@@ -612,12 +728,18 @@ function createDiagnosticCard(fan, index) {
   const title = document.createElement("h3");
   title.textContent = fan.name || `Fan ${index + 1}`;
   const pill = document.createElement("span");
-  pill.className = `pill ${errors.length === 0 ? "good" : "warn"}`;
-  pill.textContent = errors.length === 0 ? "Config ready" : "Needs details";
+  const isReady = errors.length === 0;
+  const isLiveOk = live?.ok === true;
+  pill.className = `pill ${isLiveOk || (isReady && !live) ? "good" : "warn"}`;
+  pill.textContent = live ? live.state : (isReady ? "Config ready" : "Needs details");
   header.append(title, pill);
 
   const list = document.createElement("dl");
   [
+    ["Live Connection", live ? live.message : "not checked yet"],
+    ["Latency", live?.latencyMs !== undefined ? `${live.latencyMs} ms` : "n/a"],
+    ["Bytes Received", live?.bytesReceived !== undefined ? String(live.bytesReceived) : "n/a"],
+    ["Last Check", live?.checkedAt ? formatTimestamp(live.checkedAt) : "n/a"],
     ["Address", fan.ip || "missing"],
     ["MAC", fan.mac || "missing"],
     ["State Refresh", `${getValue(fan, "probeFrequency")} ms`],
@@ -695,6 +817,32 @@ function describeOptionalServices(fan) {
   return services.length > 0 ? services.join(", ") : "none";
 }
 
+function clearLiveDiagnostic(index) {
+  if (state.diagnostics.devices[index]) {
+    state.diagnostics.devices[index] = undefined;
+  }
+}
+
+function refreshFanCardStatusForIndex(index) {
+  const card = elements.fansList.querySelector(`[data-fan-index="${index}"]`);
+  if (card) {
+    refreshFanCardStatus(card);
+  }
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return "unknown";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+
+  return date.toLocaleString();
+}
+
 function init() {
   loadConfig().catch(() => {
     showToast("error", "Failed to load current config.");
@@ -707,7 +855,12 @@ function init() {
       showToast("error", "Failed to save settings.");
     });
   });
-  elements.refreshDiagnostics.addEventListener("click", renderDiagnostics);
+  elements.refreshDiagnostics.addEventListener("click", () => {
+    loadLiveDiagnostics(elements.refreshDiagnostics).catch(() => {
+      showToast("error", "Failed to load live diagnostics.");
+      restoreButton(elements.refreshDiagnostics, "Test All Fans");
+    });
+  });
   elements.platformName.addEventListener("input", () => {
     updateConfigFromForm(false);
     updateConfigStatus();

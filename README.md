@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.30
+## homebridge-bigassfans-2 v1.1.31
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.31**
+- Added live admin diagnostics backed by a Homebridge custom UI server.
+- Added per-fan **Test Connection** and diagnostics-level **Test All Fans** actions.
+- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report response status, latency, and bytes received.
 
 **v1.1.30**
 - Updated the custom admin UI to inherit Homebridge's light/dark theme instead of forcing a separate dark design.
@@ -354,7 +359,9 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 
 #### UI Diagnostics
 
-The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
+The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Use **Test Connection** on a single fan, or **Test All Fans** in the diagnostics panel, to run a live TCP check against each fan on port `31415`. The check sends the same non-mutating capability/state-refresh probes used during plugin startup and reports whether the fan responded, latency, and bytes received.
+
+Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
 
 ### Migrating from homebridge-i6-bigassfans
 
