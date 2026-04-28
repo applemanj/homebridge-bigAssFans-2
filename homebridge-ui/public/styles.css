@@ -239,25 +239,32 @@ button:disabled {
   white-space: nowrap;
 }
 
-.secondary,
-.danger {
+.secondary {
   color: inherit;
-  background: transparent;
-  border: 1px solid var(--plugin-border);
+  background: var(--plugin-accent-surface);
+  border: 1px solid var(--plugin-accent-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .secondary:hover {
-  background: var(--plugin-subtle-surface);
-  border-color: var(--plugin-border-strong);
+  background: rgba(10, 132, 255, 0.14);
+  border-color: rgba(10, 132, 255, 0.48);
 }
 
 .danger {
-  color: var(--plugin-danger-ink);
+  color: var(--plugin-danger);
+  color: color-mix(in srgb, var(--plugin-danger) 56%, currentColor);
+  background: rgba(220, 53, 69, 0.1);
+  background: color-mix(in srgb, var(--plugin-danger) 12%, transparent);
+  border: 1px solid var(--plugin-border);
   border-color: rgba(220, 53, 69, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .danger:hover {
   background: rgba(220, 53, 69, 0.08);
+  background: color-mix(in srgb, var(--plugin-danger) 18%, transparent);
+  border-color: rgba(220, 53, 69, 0.58);
 }
 
 .toast-container {

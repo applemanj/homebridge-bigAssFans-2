@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.33
+
+**Capability-Aware Diagnostics**
+- Added shared capability parsing and summary helpers for runtime logging and custom UI diagnostics.
+- Live **Test Connection** and **Test All Fans** diagnostics now show detected capabilities, exposed services, and config guidance when the fan reports capability details.
+- Improved admin button contrast and fixed the downlight/uplight override log typo.
+
+---
+
 ### v1.1.32
 
 **Admin UI Polish and Diagnostics**

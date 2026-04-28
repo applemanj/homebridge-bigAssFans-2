@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.32
+## homebridge-bigassfans-2 v1.1.33
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.33**
+- Added shared capability parsing/summary helpers used by both runtime logging and the custom admin diagnostics.
+- Live **Test Connection** and **Test All Fans** diagnostics now parse fan capability reports when available and show detected capabilities, exposed services, and config guidance.
+- Improved admin button contrast and fixed the downlight/uplight override log typo.
 
 **v1.1.32**
 - Polished the custom Settings UI typography, spacing, cards, buttons, and labels so it feels more native inside Homebridge.
@@ -365,6 +370,8 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 #### UI Diagnostics
 
 The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Use **Test Connection** on a single fan, or **Test All Fans** in the diagnostics panel, to run a live TCP check against each fan on port `31415`. The check sends the same non-mutating capability/state-refresh probes used during plugin startup and reports whether the fan connected or responded, latency, and bytes received.
+
+When a fan includes a capability report in the diagnostic response, the UI also shows detected fan capabilities, which services those capabilities expose or hide with the current config, and guidance for options that are enabled in config but not reported by that fan.
 
 Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
 

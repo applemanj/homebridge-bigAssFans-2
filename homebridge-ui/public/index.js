@@ -740,6 +740,9 @@ function createDiagnosticCard(fan, index) {
     ["Latency", live?.latencyMs !== undefined ? `${live.latencyMs} ms` : "n/a"],
     ["Bytes Received", live?.bytesReceived !== undefined ? String(live.bytesReceived) : "n/a"],
     ["Last Check", live?.checkedAt ? formatTimestamp(live.checkedAt) : "n/a"],
+    ["Detected Capabilities", describeLiveCapabilities(live)],
+    ["Capability Exposure", describeLiveExposure(live)],
+    ["Capability Guidance", describeLiveGuidance(live)],
     ["Address", fan.ip || "missing"],
     ["MAC", fan.mac || "missing"],
     ["State Refresh", `${getValue(fan, "probeFrequency")} ms`],
@@ -815,6 +818,47 @@ function describeOptionalServices(fan) {
     services.push("direction hidden");
   }
   return services.length > 0 ? services.join(", ") : "none";
+}
+
+function describeLiveCapabilities(live) {
+  const detected = live?.capabilitySummary?.detected;
+  if (Array.isArray(detected) && detected.length > 0) {
+    return detected.join(", ");
+  }
+  if (live?.capabilityMessage) {
+    return live.capabilityMessage;
+  }
+  return "not checked yet";
+}
+
+function describeLiveExposure(live) {
+  if (!live?.capabilitySummary) {
+    return "not checked yet";
+  }
+
+  const exposed = Array.isArray(live.capabilitySummary.exposed)
+    ? live.capabilitySummary.exposed
+    : [];
+  const hidden = Array.isArray(live.capabilitySummary.hiddenByConfig)
+    ? live.capabilitySummary.hiddenByConfig
+    : [];
+  const parts = [];
+  parts.push(`exposed: ${exposed.length > 0 ? exposed.join(", ") : "none"}`);
+  if (hidden.length > 0) {
+    parts.push(`hidden by config: ${hidden.join(", ")}`);
+  }
+  return parts.join("; ");
+}
+
+function describeLiveGuidance(live) {
+  const missing = live?.capabilitySummary?.notReportedButEnabled;
+  if (Array.isArray(missing) && missing.length > 0) {
+    return `Configured but not reported by fan: ${missing.join(", ")}.`;
+  }
+  if (live?.capabilitySummary) {
+    return "Configured options match the fan capability report.";
+  }
+  return "Run Test Connection or Test All Fans to compare settings with live fan capabilities.";
 }
 
 function clearLiveDiagnostic(index) {

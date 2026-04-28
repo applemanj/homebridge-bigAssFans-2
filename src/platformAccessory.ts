@@ -3,6 +3,12 @@
 import * as net from 'net';
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import type { BigAssFansAccessoryContext, BigAssFansPlatformContext, LightDetectionOverride } from './types';
+import {
+  capabilityKeys,
+  createDefaultCapabilities,
+  summarizeCapabilityExposure,
+  type Capabilities,
+} from './protocol';
 
 const MAXFANSPEED = 7;
 const ROTATION_SPEED_DEBOUNCE_MS = 125;
@@ -33,40 +39,6 @@ interface colorLightStates {
 
 type BAF = BigAssFans_i6PlatformAccessory;
 
-interface Capabilities {
-  hasTempSensor: boolean;
-  hasHumiditySensor: boolean;
-  hasOccupancySensor: boolean;
-  hasLight: boolean;
-  hasLightSensor: boolean;
-  hasColorTempControl: boolean;
-  hasFan: boolean;
-  hasSpeaker: boolean;
-  hasPiezo: boolean;
-  hasLEDIndicators: boolean;
-  hasUplight: boolean;
-  hasUVCLight: boolean;
-  hasStandbyLED: boolean;
-  hasEcoMode : boolean;
-}
-
-const capabilityKeys: Array<keyof Capabilities> = [
-  'hasTempSensor',
-  'hasHumiditySensor',
-  'hasOccupancySensor',
-  'hasLight',
-  'hasLightSensor',
-  'hasColorTempControl',
-  'hasFan',
-  'hasSpeaker',
-  'hasPiezo',
-  'hasLEDIndicators',
-  'hasUplight',
-  'hasUVCLight',
-  'hasStandbyLED',
-  'hasEcoMode',
-];
-
 function normalizeLightDetectionOverride(value: LightDetectionOverride | undefined): boolean | undefined {
   return value === 'auto' ? undefined : value;
 }
@@ -80,22 +52,7 @@ function normalizeLightDetectionOverride(value: LightDetectionOverride | undefin
  */
 export class BigAssFans_i6PlatformAccessory {
   public capabilitiesEstablished = false;
-  public capabilities: Capabilities = {
-    hasTempSensor: false,
-    hasHumiditySensor: false,
-    hasOccupancySensor: false,
-    hasLight: false,
-    hasLightSensor: false,
-    hasColorTempControl: false,
-    hasFan: false,
-    hasSpeaker: false,
-    hasPiezo: false,
-    hasLEDIndicators: false,
-    hasUplight: false,
-    hasUVCLight: false,
-    hasStandbyLED: false,
-    hasEcoMode: false,
-  };
+  public capabilities: Capabilities = createDefaultCapabilities();
 
   public fanService!: Service;
   public downlightBulbService!: Service;
@@ -3483,7 +3440,7 @@ function reconcileCapabilities(pA: BAF, previousCapabilities: Capabilities) {
 
   if (pA.downlightEquipped !== undefined) {
     if (pA.capabilities.hasLight !== pA.downlightEquipped) {
-      const str = `downlight presence overriden by user configuration ("downlightEquipped": ${pA.downlightEquipped})`;
+      const str = `downlight presence overridden by user configuration ("downlightEquipped": ${pA.downlightEquipped})`;
       pA.capabilities.hasLight = pA.downlightEquipped === true ? true : false;
       debugLog(pA, 'light', 1, str);
       infoLogOnce(pA, str);
@@ -3491,7 +3448,7 @@ function reconcileCapabilities(pA: BAF, previousCapabilities: Capabilities) {
   }
   if (pA.uplightEquipped !== undefined) {
     if (pA.capabilities.hasUplight !== pA.uplightEquipped) {
-      const str = `uplight presence overriden by user configuration ("uplightEquipped": ${pA.uplightEquipped})`;
+      const str = `uplight presence overridden by user configuration ("uplightEquipped": ${pA.uplightEquipped})`;
       pA.capabilities.hasUplight = pA.uplightEquipped === true ? true : false;
       debugLog(pA, 'light', 1, str);
       infoLogOnce(pA, str);
@@ -3539,90 +3496,7 @@ function flushFunQueue(pA: BAF, pending: funCall[] = []) {
 }
 
 function logCapabilitySummary(pA: BigAssFans_i6PlatformAccessory) {
-  const detected: string[] = [];
-  const exposed: string[] = [];
-  const hiddenByConfig: string[] = [];
-
-  if (pA.capabilities.hasFan) {
-    detected.push('fan');
-    exposed.push('fan');
-  }
-
-  if (pA.capabilities.hasLight) {
-    detected.push('downlight');
-    if (pA.noLights) {
-      hiddenByConfig.push('downlight');
-    } else {
-      exposed.push('downlight');
-    }
-  }
-
-  if (pA.capabilities.hasUplight) {
-    detected.push('uplight');
-    if (pA.noLights) {
-      hiddenByConfig.push('uplight');
-    } else {
-      exposed.push('uplight');
-    }
-  }
-
-  if (pA.capabilities.hasUVCLight) {
-    detected.push('uv-c');
-    if (pA.noLights) {
-      hiddenByConfig.push('uv-c');
-    } else {
-      exposed.push('uv-c');
-    }
-  }
-
-  if (pA.capabilities.hasTempSensor) {
-    detected.push('temperature');
-    if (pA.showTemperature === false) {
-      hiddenByConfig.push('temperature');
-    } else {
-      exposed.push('temperature');
-    }
-  }
-
-  if (pA.capabilities.hasHumiditySensor) {
-    detected.push('humidity');
-    if (pA.showHumidity === false) {
-      hiddenByConfig.push('humidity');
-    } else {
-      exposed.push('humidity');
-    }
-  }
-
-  if (pA.capabilities.hasOccupancySensor) {
-    detected.push('occupancy');
-    if (pA.showFanOccupancySensor) {
-      exposed.push('fan occupancy');
-    }
-    if (pA.showLightOccupancySensor) {
-      exposed.push('light occupancy');
-    }
-    if (!pA.showFanOccupancySensor && !pA.showLightOccupancySensor) {
-      hiddenByConfig.push('occupancy');
-    }
-  }
-
-  if (pA.capabilities.hasStandbyLED) {
-    detected.push('standby led');
-    if (pA.showStandbyLED) {
-      exposed.push('standby led');
-    } else {
-      hiddenByConfig.push('standby led');
-    }
-  }
-
-  if (pA.capabilities.hasEcoMode) {
-    detected.push('eco mode');
-    if (pA.showEcoModeSwitch) {
-      exposed.push('eco mode');
-    } else {
-      hiddenByConfig.push('eco mode');
-    }
-  }
+  const { detected, exposed, hiddenByConfig } = summarizeCapabilityExposure(pA.capabilities, pA);
 
   const detectedSummary = detected.length > 0 ? detected.join(', ') : 'none';
   const exposedSummary = exposed.length > 0 ? exposed.join(', ') : 'none';

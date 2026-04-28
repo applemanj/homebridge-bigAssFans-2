@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import * as net from 'net';
 
 import { __test__ } from '../src/platformAccessory';
+import { parseCapabilitiesFromSlipData, summarizeCapabilityExposure } from '../src/protocol';
 
 class FakeSocket extends EventEmitter {
   public writes: Buffer[] = [];
@@ -501,6 +502,55 @@ function testAutoLightOverrideNormalizesToAutodetect() {
   assert.equal(__test__.normalizeLightDetectionOverride(undefined), undefined);
 }
 
+function protobufVarintField(field: number, value: number) {
+  return Buffer.from([
+    ...__test__.varint_encode((field << 3) | 0),
+    ...__test__.varint_encode(value),
+  ]);
+}
+
+function protobufMessageField(field: number, body: Buffer) {
+  return Buffer.from([
+    ...__test__.varint_encode((field << 3) | 2),
+    ...__test__.varint_encode(body.length),
+    ...body,
+  ]);
+}
+
+function testCapabilityParserExtractsLiveCapabilities() {
+  const capabilityMessage = Buffer.concat([
+    protobufVarintField(6, 1),
+    protobufVarintField(7, 1),
+    protobufVarintField(14, 1),
+  ]);
+  const payload = protobufMessageField(2,
+    protobufMessageField(4,
+      protobufMessageField(2,
+        protobufMessageField(17, capabilityMessage),
+      ),
+    ),
+  );
+  const data = Buffer.concat([Buffer.from([0xc0]), payload, Buffer.from([0xc0])]);
+
+  const capabilities = parseCapabilitiesFromSlipData(data);
+
+  assert.equal(capabilities?.hasFan, true);
+  assert.equal(capabilities?.hasColorTempControl, true);
+  assert.equal(capabilities?.hasEcoMode, true);
+  assert.equal(capabilities?.hasLight, false);
+
+  const summary = summarizeCapabilityExposure(capabilities!, {
+    showEcoModeSwitch: false,
+    showHumidity: true,
+    showTemperature: true,
+  });
+
+  assert.deepEqual(summary.detected, ['fan', 'downlight', 'eco mode']);
+  assert.deepEqual(summary.exposed, ['fan', 'downlight']);
+  assert.deepEqual(summary.hiddenByConfig, ['eco mode']);
+  assert.deepEqual(summary.notReportedButEnabled, ['temperature', 'humidity']);
+}
+
 async function testReconnectOnClose() {
   const { state } = createTestAccessoryState();
   const originalSetTimeout = global.setTimeout;
@@ -617,6 +667,7 @@ async function main() {
   testColorTemperatureCapabilityImpliesDownlight();
   testDownlightOverrideWinsOverInference();
   testAutoLightOverrideNormalizesToAutodetect();
+  testCapabilityParserExtractsLiveCapabilities();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

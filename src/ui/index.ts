@@ -1,4 +1,12 @@
 import * as net from 'net';
+import {
+  applyCapabilityConfig,
+  parseCapabilitiesFromSlipData,
+  summarizeCapabilityExposure,
+  type Capabilities,
+  type CapabilityExposureConfig,
+  type CapabilityExposureSummary,
+} from '../protocol';
 
 interface HomebridgePluginUiServer {
   onRequest(path: string, handler: (payload: unknown) => Promise<unknown>): void;
@@ -7,7 +15,7 @@ interface HomebridgePluginUiServer {
 
 type HomebridgePluginUiServerConstructor = new () => HomebridgePluginUiServer;
 
-interface FanConfigPayload {
+interface FanConfigPayload extends CapabilityExposureConfig {
   name?: string;
   ip?: string;
   mac?: string;
@@ -21,9 +29,11 @@ interface DiagnosticsPayload {
   fans?: FanConfigPayload[];
 }
 
+type NormalizedFanConfig = CapabilityExposureConfig & Required<Pick<FanConfigPayload, 'name' | 'ip' | 'mac'>>;
+
 interface FanDiagnosticDevice {
   index: number;
-  fan: Required<FanConfigPayload>;
+  fan: NormalizedFanConfig;
   result: ConnectionDiagnostic;
 }
 
@@ -35,6 +45,9 @@ interface ConnectionDiagnostic {
   latencyMs?: number;
   bytesReceived?: number;
   errorCode?: string;
+  capabilities?: Capabilities;
+  capabilitySummary?: CapabilityExposureSummary;
+  capabilityMessage?: string;
 }
 
 const FAN_PORT = 31415;
@@ -93,8 +106,9 @@ export function startBigAssFansUiServer(
   return new BigAssFansUiServer();
 }
 
-function normalizeFan(fan: FanConfigPayload | undefined): Required<FanConfigPayload> {
+function normalizeFan(fan: FanConfigPayload | undefined): NormalizedFanConfig {
   return {
+    ...(fan || {}),
     name: String(fan?.name || '').trim(),
     ip: String(fan?.ip || '').trim(),
     mac: String(fan?.mac || '').trim(),
@@ -105,7 +119,7 @@ function toPayload<T>(payload: unknown): Partial<T> {
   return payload && typeof payload === 'object' ? payload as Partial<T> : {};
 }
 
-function validateFan(fan: Required<FanConfigPayload>): string | undefined {
+function validateFan(fan: NormalizedFanConfig): string | undefined {
   if (!fan.name) {
     return 'Fan name is required.';
   }
@@ -118,7 +132,7 @@ function validateFan(fan: Required<FanConfigPayload>): string | undefined {
   return undefined;
 }
 
-function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
+function testFanConnection(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
   const validationError = validateFan(fan);
   if (validationError) {
     return Promise.resolve({
@@ -134,6 +148,9 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
     let settled = false;
     let connected = false;
     let bytesReceived = 0;
+    let receivedData = Buffer.alloc(0);
+    let timeout: ReturnType<typeof setTimeout>;
+    let responseGraceTimeout: ReturnType<typeof setTimeout> | undefined;
     const socket = net.connect({ port: FAN_PORT, host: fan.ip });
 
     const finish = (result: Omit<ConnectionDiagnostic, 'checkedAt'>) => {
@@ -141,6 +158,10 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
         return;
       }
       settled = true;
+      clearTimeout(timeout);
+      if (responseGraceTimeout !== undefined) {
+        clearTimeout(responseGraceTimeout);
+      }
       socket.removeAllListeners();
       socket.destroy();
       resolve({
@@ -149,7 +170,8 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
       });
     };
 
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
+      const capabilityDetails = getCapabilityDetails(receivedData, fan);
       finish({
         ok: connected || bytesReceived > 0,
         state: bytesReceived > 0 ? 'responded' : (connected ? 'connected' : 'timeout'),
@@ -160,6 +182,7 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
             : `No response from ${fan.ip}:${FAN_PORT} within ${timeoutMs}ms.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
+        ...capabilityDetails,
       });
     }, timeoutMs);
 
@@ -174,14 +197,35 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
 
     socket.on('data', (data: Buffer) => {
       bytesReceived += data.length;
-      clearTimeout(timeout);
-      finish({
-        ok: true,
-        state: 'responded',
-        message: `Fan responded on ${fan.ip}:${FAN_PORT}.`,
-        latencyMs: Date.now() - startedAt,
-        bytesReceived,
-      });
+      receivedData = Buffer.concat([receivedData, data]);
+      const capabilityDetails = getCapabilityDetails(receivedData, fan);
+
+      if (capabilityDetails.capabilities) {
+        finish({
+          ok: true,
+          state: 'responded',
+          message: `Fan responded on ${fan.ip}:${FAN_PORT} and reported capabilities.`,
+          latencyMs: Date.now() - startedAt,
+          bytesReceived,
+          ...capabilityDetails,
+        });
+        return;
+      }
+
+      if (responseGraceTimeout !== undefined) {
+        clearTimeout(responseGraceTimeout);
+      }
+
+      responseGraceTimeout = setTimeout(() => {
+        finish({
+          ok: true,
+          state: 'responded',
+          message: `Fan responded on ${fan.ip}:${FAN_PORT}, but capability details were not present in the diagnostic response.`,
+          latencyMs: Date.now() - startedAt,
+          bytesReceived,
+          ...getCapabilityDetails(receivedData, fan),
+        });
+      }, 300);
     });
 
     socket.on('timeout', () => {
@@ -196,6 +240,7 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
             : `Connection to ${fan.ip}:${FAN_PORT} timed out.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
+        ...getCapabilityDetails(receivedData, fan),
       });
     });
 
@@ -210,6 +255,7 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
         latencyMs: Date.now() - startedAt,
         bytesReceived,
         errorCode: error.code,
+        ...getCapabilityDetails(receivedData, fan),
       });
     });
 
@@ -225,9 +271,34 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
             : `Connection to ${fan.ip}:${FAN_PORT} closed before the fan responded.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
+        ...getCapabilityDetails(receivedData, fan),
       });
     });
   });
+}
+
+function getCapabilityDetails(
+  data: Buffer,
+  fan: NormalizedFanConfig,
+): Pick<ConnectionDiagnostic, 'capabilities' | 'capabilitySummary' | 'capabilityMessage'> {
+  const rawCapabilities = parseCapabilitiesFromSlipData(data);
+  if (!rawCapabilities) {
+    return {
+      capabilityMessage: 'Capability details were not reported in this diagnostic response.',
+    };
+  }
+
+  const capabilities = applyCapabilityConfig(rawCapabilities, fan);
+  const capabilitySummary = summarizeCapabilityExposure(rawCapabilities, fan);
+  const detected = capabilitySummary.detected.length > 0
+    ? capabilitySummary.detected.join(', ')
+    : 'none';
+
+  return {
+    capabilities,
+    capabilitySummary,
+    capabilityMessage: `Detected capabilities: ${detected}.`,
+  };
 }
 
 function frameMessage(payload: number[]) {
