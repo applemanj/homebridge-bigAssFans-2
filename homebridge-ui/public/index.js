@@ -51,67 +51,67 @@ const fanDefaults = {
 const booleanFields = [
   {
     key: "showFanAutoSwitch",
-    label: "Fan Auto Switch (Legacy)",
+    label: "Fan Auto switch (legacy)",
     help: "Adds a separate Fan Auto switch. Fan Auto is also native in the fan tile.",
   },
   {
     key: "showLightAutoSwitch",
-    label: "Light Auto Switch",
+    label: "Light Auto switch",
     help: "Adds Light Auto when the fan has lights.",
   },
   {
     key: "showDimToWarmSwitch",
-    label: "Dim To Warm Switch",
+    label: "Dim to Warm switch",
     help: "Adds Dim to Warm when supported by the fan.",
   },
   {
     key: "showEcoModeSwitch",
-    label: "Eco Mode Switch",
+    label: "Eco Mode switch",
     help: "Adds Eco Mode when supported by Haiku models.",
   },
   {
     key: "disableDirectionControl",
-    label: "Disable Direction Control",
+    label: "Disable direction control",
     help: "Hides the fan reverse/direction control in HomeKit.",
   },
   {
     key: "noLights",
-    label: "Hide Light Controls",
+    label: "Hide light controls",
     help: "Hides downlight, uplight, UVC, and standby LED services.",
   },
   {
     key: "showHumidity",
-    label: "Show Humidity Sensor",
+    label: "Show humidity sensor",
     help: "Exposes humidity when supported by the fan.",
   },
   {
     key: "showTemperature",
-    label: "Show Temperature Sensor",
+    label: "Show temperature sensor",
     help: "Exposes temperature when supported by the fan.",
   },
   {
     key: "showFanOccupancySensor",
-    label: "Show Fan Occupancy Sensor",
+    label: "Show fan occupancy sensor",
     help: "Exposes fan occupancy when supported by the fan.",
   },
   {
     key: "showLightOccupancySensor",
-    label: "Show Light Occupancy Sensor",
+    label: "Show light occupancy sensor",
     help: "Exposes light occupancy when supported by the fan.",
   },
   {
     key: "showStandbyLED",
-    label: "Show Standby LED Controls",
+    label: "Show standby LED controls",
     help: "Exposes night light / standby LED controls when supported.",
   },
   {
     key: "enableIncrementalButtons",
-    label: "Enable +/- Buttons",
+    label: "Enable +/- buttons",
     help: "Adds momentary +/- buttons for brightness and fan speed.",
   },
   {
     key: "enableDebugPort",
-    label: "Enable Debug Port",
+    label: "Enable debug port",
     help: "Enables localhost-only runtime diagnostics. Leave off for normal use.",
   },
 ];
@@ -230,18 +230,18 @@ function createFanCard(fan, index) {
   const identityGrid = document.createElement("div");
   identityGrid.className = "settings-grid";
   identityGrid.append(
-    createTextField(index, "name", "Fan Name", fan.name || "", "Office Fan", "Display name for this fan in HomeKit."),
-    createTextField(index, "ip", "Fan IP Address Or Hostname", fan.ip || "", "192.168.1.150 or fan.local", "IP address, DNS hostname, or mDNS .local hostname."),
-    createTextField(index, "mac", "MAC Address", fan.mac || "", "20:F8:5E:00:00:00", "MAC address from the Big Ass Fans app Wi-Fi settings."),
-    createNumberField(index, "probeFrequency", "Probe Frequency (ms)", getValue(fan, "probeFrequency"), "Keep-alive and state refresh interval. Use 0 to disable probing.")
+    createTextField(index, "name", "Fan name", fan.name || "", "Office Fan", "Display name for this fan in HomeKit."),
+    createTextField(index, "ip", "Fan IP address or hostname", fan.ip || "", "192.168.1.150 or fan.local", "IP address, DNS hostname, or mDNS .local hostname."),
+    createTextField(index, "mac", "MAC address", fan.mac || "", "20:F8:5E:00:00:00", "MAC address from the Big Ass Fans app Wi-Fi settings."),
+    createNumberField(index, "probeFrequency", "Probe frequency (ms)", getValue(fan, "probeFrequency"), "Keep-alive and state refresh interval. Use 0 to disable probing.")
   );
   card.appendChild(identityGrid);
 
   card.appendChild(
     createSettingSection("Capability Detection", [
-      createLightSelect(index, "downlightEquipped", "Downlight Detection", getLightOverride(fan.downlightEquipped), "Auto Detect unless the plugin guesses wrong."),
-      createLightSelect(index, "uplightEquipped", "Uplight Detection", getLightOverride(fan.uplightEquipped), "Auto Detect unless the plugin guesses wrong."),
-      createNumberField(index, "incrementalButtonsDelay", "Incremental Button Reset Delay (ms)", getValue(fan, "incrementalButtonsDelay"), "Auto-reset delay for optional +/- buttons."),
+      createLightSelect(index, "downlightEquipped", "Downlight detection", getLightOverride(fan.downlightEquipped), "Auto-detect unless the plugin guesses wrong."),
+      createLightSelect(index, "uplightEquipped", "Uplight detection", getLightOverride(fan.uplightEquipped), "Auto-detect unless the plugin guesses wrong."),
+      createNumberField(index, "incrementalButtonsDelay", "Incremental button reset delay (ms)", getValue(fan, "incrementalButtonsDelay"), "Auto-reset delay for optional +/- buttons."),
     ])
   );
 
@@ -346,9 +346,9 @@ function createLightSelect(index, key, label, value, help) {
   select.dataset.fanField = key;
   select.dataset.fanIndex = String(index);
   [
-    ["auto", "Auto Detect"],
-    ["true", "Force Present"],
-    ["false", "Force Hidden"],
+    ["auto", "Auto-detect"],
+    ["true", "Force present"],
+    ["false", "Force hidden"],
   ].forEach(([optionValue, text]) => {
     const option = document.createElement("option");
     option.value = optionValue;

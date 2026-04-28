@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.31
+## homebridge-bigassfans-2 v1.1.32
 
 </span>
 
@@ -38,10 +38,15 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
 
+**v1.1.32**
+- Polished the custom Settings UI typography, spacing, cards, buttons, and labels so it feels more native inside Homebridge.
+- Improved **Test All Fans** diagnostics by checking fans sequentially instead of opening all diagnostic sockets at once.
+- Treats a successful diagnostic TCP connection as `connected` even if the fan does not send probe bytes before the timeout, while still reporting `responded` when bytes are received.
+
 **v1.1.31**
 - Added live admin diagnostics backed by a Homebridge custom UI server.
 - Added per-fan **Test Connection** and diagnostics-level **Test All Fans** actions.
-- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report response status, latency, and bytes received.
+- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report connection/response status, latency, and bytes received.
 
 **v1.1.30**
 - Updated the custom admin UI to inherit Homebridge's light/dark theme instead of forcing a separate dark design.
@@ -359,7 +364,7 @@ Then let the plugin detect the fan's capabilities at startup and only add overri
 
 #### UI Diagnostics
 
-The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Use **Test Connection** on a single fan, or **Test All Fans** in the diagnostics panel, to run a live TCP check against each fan on port `31415`. The check sends the same non-mutating capability/state-refresh probes used during plugin startup and reports whether the fan responded, latency, and bytes received.
+The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Use **Test Connection** on a single fan, or **Test All Fans** in the diagnostics panel, to run a live TCP check against each fan on port `31415`. The check sends the same non-mutating capability/state-refresh probes used during plugin startup and reports whether the fan connected or responded, latency, and bytes received.
 
 Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
 

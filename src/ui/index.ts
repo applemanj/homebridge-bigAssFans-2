@@ -21,9 +21,15 @@ interface DiagnosticsPayload {
   fans?: FanConfigPayload[];
 }
 
+interface FanDiagnosticDevice {
+  index: number;
+  fan: Required<FanConfigPayload>;
+  result: ConnectionDiagnostic;
+}
+
 interface ConnectionDiagnostic {
   ok: boolean;
-  state: 'missing-config' | 'responded' | 'timeout' | 'error';
+  state: 'missing-config' | 'connected' | 'responded' | 'timeout' | 'error';
   message: string;
   checkedAt: string;
   latencyMs?: number;
@@ -66,11 +72,14 @@ export function startBigAssFansUiServer(
     private async getDiagnostics(payload: unknown) {
       const request = toPayload<DiagnosticsPayload>(payload);
       const fans = Array.isArray(request.fans) ? request.fans.map(normalizeFan) : [];
-      const devices = await Promise.all(fans.map(async (fan, index) => ({
-        index,
-        fan,
-        result: await testFanConnection(fan),
-      })));
+      const devices: FanDiagnosticDevice[] = [];
+      for (const [index, fan] of fans.entries()) {
+        devices.push({
+          index,
+          fan,
+          result: await testFanConnection(fan),
+        });
+      }
 
       return {
         ok: true,
@@ -123,6 +132,7 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
   return new Promise((resolve) => {
     const startedAt = Date.now();
     let settled = false;
+    let connected = false;
     let bytesReceived = 0;
     const socket = net.connect({ port: FAN_PORT, host: fan.ip });
 
@@ -141,11 +151,13 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
 
     const timeout = setTimeout(() => {
       finish({
-        ok: bytesReceived > 0,
-        state: bytesReceived > 0 ? 'responded' : 'timeout',
+        ok: connected || bytesReceived > 0,
+        state: bytesReceived > 0 ? 'responded' : (connected ? 'connected' : 'timeout'),
         message: bytesReceived > 0
           ? `Fan responded with ${bytesReceived} byte(s), then the check timed out waiting for more data.`
-          : `No response from ${fan.ip}:${FAN_PORT} within ${timeoutMs}ms.`,
+          : (connected
+            ? `Connected to ${fan.ip}:${FAN_PORT}, but the fan did not send probe data before the diagnostic timeout.`
+            : `No response from ${fan.ip}:${FAN_PORT} within ${timeoutMs}ms.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
       });
@@ -154,6 +166,7 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
     socket.setTimeout(timeoutMs);
 
     socket.on('connect', () => {
+      connected = true;
       socket.setKeepAlive(true);
       socket.write(frameMessage(CAPABILITY_QUERY));
       socket.write(frameMessage(STATE_REFRESH));
@@ -174,11 +187,13 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
     socket.on('timeout', () => {
       clearTimeout(timeout);
       finish({
-        ok: bytesReceived > 0,
-        state: bytesReceived > 0 ? 'responded' : 'timeout',
+        ok: connected || bytesReceived > 0,
+        state: bytesReceived > 0 ? 'responded' : (connected ? 'connected' : 'timeout'),
         message: bytesReceived > 0
           ? `Fan responded with ${bytesReceived} byte(s), then the socket timed out.`
-          : `Connection to ${fan.ip}:${FAN_PORT} timed out.`,
+          : (connected
+            ? `Connected to ${fan.ip}:${FAN_PORT}, but the fan did not send probe data before the socket timeout.`
+            : `Connection to ${fan.ip}:${FAN_PORT} timed out.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
       });
@@ -187,9 +202,11 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
     socket.on('error', (error: NodeJS.ErrnoException) => {
       clearTimeout(timeout);
       finish({
-        ok: false,
-        state: 'error',
-        message: error.message || `Could not connect to ${fan.ip}:${FAN_PORT}.`,
+        ok: connected || bytesReceived > 0,
+        state: connected || bytesReceived > 0 ? 'connected' : 'error',
+        message: connected || bytesReceived > 0
+          ? `Connected to ${fan.ip}:${FAN_PORT}, then the fan closed the diagnostic connection (${error.code || error.message}).`
+          : error.message || `Could not connect to ${fan.ip}:${FAN_PORT}.`,
         latencyMs: Date.now() - startedAt,
         bytesReceived,
         errorCode: error.code,
@@ -199,11 +216,13 @@ function testFanConnection(fan: Required<FanConfigPayload>, timeoutMs = DEFAULT_
     socket.on('close', () => {
       clearTimeout(timeout);
       finish({
-        ok: bytesReceived > 0,
-        state: bytesReceived > 0 ? 'responded' : 'error',
+        ok: connected || bytesReceived > 0,
+        state: bytesReceived > 0 ? 'responded' : (connected ? 'connected' : 'error'),
         message: bytesReceived > 0
           ? `Fan responded with ${bytesReceived} byte(s), then closed the socket.`
-          : `Connection to ${fan.ip}:${FAN_PORT} closed before the fan responded.`,
+          : (connected
+            ? `Connected to ${fan.ip}:${FAN_PORT}, then the fan closed the diagnostic connection before sending probe data.`
+            : `Connection to ${fan.ip}:${FAN_PORT} closed before the fan responded.`),
         latencyMs: Date.now() - startedAt,
         bytesReceived,
       });

@@ -1,11 +1,20 @@
 ## Release Notes
 
+### v1.1.32
+
+**Admin UI Polish and Diagnostics**
+- Polished custom Settings UI typography, spacing, cards, buttons, and labels for a cleaner Homebridge-native feel.
+- Improved **Test All Fans** by checking fans sequentially to avoid unnecessary simultaneous diagnostic connections.
+- Reports diagnostic checks as `connected` when TCP connectivity succeeds but the fan does not send probe bytes before timeout, and `responded` when probe bytes are received.
+
+---
+
 ### v1.1.31
 
 **Admin UI Diagnostics**
 - Added a Homebridge custom UI server for live diagnostics.
 - Added per-fan **Test Connection** and diagnostics-level **Test All Fans** actions.
-- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report response status, latency, and bytes received.
+- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report connection/response status, latency, and bytes received.
 
 ---
 

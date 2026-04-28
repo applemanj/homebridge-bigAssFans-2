@@ -22,42 +22,60 @@ body {
   margin: 0;
   color: inherit;
   background: transparent;
-  font: inherit;
+  font-family: var(
+    --bs-body-font-family,
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    sans-serif
+  );
+  font-size: var(--bs-body-font-size, 1rem);
+  font-weight: var(--bs-body-font-weight, 400);
+  line-height: var(--bs-body-line-height, 1.5);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .plugin-container {
   max-width: 980px;
   margin: 0 auto;
-  padding: 8px 2px 2px;
+  padding: 12px 4px 4px;
   display: grid;
-  gap: 16px;
+  gap: 18px;
   color: inherit;
   background: transparent;
 }
 
 header h1 {
-  font-size: 2rem;
-  line-height: 1.15;
-  margin: 0 0 8px;
+  font-size: clamp(1.75rem, 2.3vw, 2.15rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin: 0 0 6px;
 }
 
 .subtitle {
   margin: 0;
   color: currentColor;
   opacity: 0.72;
+  font-size: 0.98rem;
 }
 
 .panel {
   color: inherit;
-  background: transparent;
+  background: var(--plugin-subtle-surface);
   border: 1px solid var(--plugin-border);
-  border-radius: 10px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
 }
 
 .panel h2 {
   margin: 0 0 6px;
-  font-size: 1.18rem;
+  font-size: 1.16rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1.25;
 }
 
@@ -82,23 +100,28 @@ header h1 {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 18px;
+  gap: 18px 20px;
+  margin-top: 20px;
 }
 
 .field {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   color: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.93rem;
+  font-weight: 500;
+}
+
+.field > span {
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .field small,
 .checkbox small {
   color: currentColor;
   display: block;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 400;
   line-height: 1.35;
   opacity: 0.72;
@@ -107,16 +130,19 @@ header h1 {
 .field input,
 .field select {
   width: 100%;
-  padding: 0.625rem 0.75rem;
+  min-height: 44px;
+  padding: 0.65rem 0.78rem;
   border: 1px solid var(--plugin-border);
-  border-radius: 0.375rem;
+  border-radius: 0.55rem;
   color: inherit;
-  background-color: transparent;
+  background-color: rgba(148, 163, 184, 0.07);
   font: inherit;
+  font-weight: 500;
 }
 
 .field input:focus,
 .field select:focus {
+  background-color: rgba(148, 163, 184, 0.1);
   border-color: var(--plugin-accent);
   box-shadow: 0 0 0 0.2rem var(--plugin-focus-ring);
   outline: none;
@@ -133,12 +159,21 @@ header h1 {
   gap: 10px;
   margin-top: 0;
   color: inherit;
-  font-weight: 600;
+  font-size: 0.94rem;
+  font-weight: 550;
+  line-height: 1.3;
 }
 
 .checkbox input {
-  width: auto;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
   margin: 4px 0 0;
+  accent-color: var(--plugin-accent);
+}
+
+.checkbox > span {
+  display: block;
 }
 
 .hidden {
@@ -147,7 +182,7 @@ header h1 {
 
 .readonly input {
   background: var(--plugin-subtle-surface);
-  opacity: 0.78;
+  opacity: 0.82;
 }
 
 .actions {
@@ -158,15 +193,22 @@ header h1 {
 }
 
 button {
-  border-radius: 0.375rem;
-  padding: 0.625rem 1rem;
+  min-height: 42px;
+  border-radius: 0.55rem;
+  padding: 0.65rem 1.05rem;
   font: inherit;
-  font-weight: 600;
+  font-size: 0.94rem;
+  font-weight: 650;
   cursor: pointer;
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
 }
 
 button:focus-visible {
@@ -183,6 +225,7 @@ button:disabled {
   color: var(--bs-btn-color, #fff);
   background: var(--plugin-accent);
   border: 1px solid var(--plugin-accent);
+  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.18);
 }
 
 .primary:hover {
@@ -260,10 +303,10 @@ button:disabled {
 .fan-card,
 .diagnostic-device {
   color: var(--plugin-tile-ink);
-  background: var(--plugin-subtle-surface);
+  background: rgba(148, 163, 184, 0.075);
   border: 1px solid var(--plugin-border);
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px;
 }
 
 .device-header {
@@ -276,7 +319,9 @@ button:disabled {
 
 .device-header h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .setting-section {
@@ -286,8 +331,9 @@ button:disabled {
 .setting-section h4 {
   margin: 0 0 12px;
   color: currentColor;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   opacity: 0.72;
 }
@@ -304,7 +350,7 @@ button:disabled {
   align-items: center;
   border: 1px solid var(--plugin-border);
   border-radius: 999px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
 }
