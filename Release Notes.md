@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.37
+
+**HomeKit Service Cleanup and Admin UI Polish**
+- Removed additional stale cached HomeKit services by subtype and service UUID, including uplight and humidity services that could remain visible after capability detection hid them.
+- Improved the regression harness so stale cached sensor/light services are covered directly.
+- Made the admin UI's plugin settings section less prominent, moved the legacy platform alias into advanced details, and fixed dropdown option readability in dark themes.
+
+---
+
 ### v1.1.36
 
 **HomeKit Service Cleanup**

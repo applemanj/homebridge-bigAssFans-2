@@ -79,6 +79,11 @@ header h1 {
   line-height: 1.25;
 }
 
+.plugin-settings-panel {
+  padding: 18px 22px;
+  background: transparent;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -102,6 +107,22 @@ header h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px 20px;
   margin-top: 20px;
+}
+
+.plugin-settings-grid {
+  align-items: end;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.plugin-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.plugin-settings-actions .primary {
+  min-width: 132px;
 }
 
 .field {
@@ -138,6 +159,16 @@ header h1 {
   background-color: rgba(148, 163, 184, 0.07);
   font: inherit;
   font-weight: 500;
+}
+
+.field select option {
+  color: #111827;
+  background-color: #f8fafc;
+}
+
+.field select option:checked {
+  color: #ffffff;
+  background-color: var(--plugin-accent);
 }
 
 .field input:focus,
@@ -191,6 +222,31 @@ header h1 {
 .readonly input {
   background: var(--plugin-subtle-surface);
   opacity: 0.82;
+}
+
+.advanced-settings {
+  margin-top: 14px;
+  color: inherit;
+}
+
+.advanced-settings summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: currentColor;
+  font-size: 0.88rem;
+  font-weight: 600;
+  opacity: 0.76;
+}
+
+.advanced-settings summary:hover {
+  opacity: 1;
+}
+
+.advanced-settings .field {
+  max-width: 420px;
+  margin-top: 10px;
 }
 
 .actions {

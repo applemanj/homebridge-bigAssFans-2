@@ -33,11 +33,19 @@ class FakeSocket extends EventEmitter {
 
 class FakeService {
   public characteristics = new Set<string>();
+  public name?: string;
 
-  constructor(public readonly name: string) {}
+  constructor(
+    public displayName: string,
+    public UUID = displayName,
+    public subtype?: string,
+  ) {}
 
   setCharacteristic(characteristic: string, _value: unknown) {
     this.characteristics.add(characteristic);
+    if (characteristic === 'Name' || characteristic === 'ConfiguredName') {
+      this.name = String(_value);
+    }
     return this;
   }
 
@@ -63,29 +71,39 @@ class FakeService {
 }
 
 class FakeAccessory {
-  public services = new Map<string, FakeService>();
+  public services: FakeService[] = [];
 
   constructor() {
-    this.services.set('AccessoryInformation', new FakeService('AccessoryInformation'));
+    this.services.push(new FakeService('AccessoryInformation'));
   }
 
-  getService(name: string) {
-    return this.services.get(name);
+  getService(service: string | { UUID: string }) {
+    if (typeof service === 'string') {
+      const normalized = service.toLowerCase();
+      return this.services.find((candidate) => [
+        candidate.displayName,
+        candidate.name,
+        candidate.subtype,
+        candidate.UUID,
+      ].some((value) => String(value || '').toLowerCase() === normalized));
+    }
+
+    return this.services.find((candidate) => candidate.UUID === service.UUID);
   }
 
-  addService(_type: string, name?: string) {
-    const serviceName = name || _type;
-    const service = new FakeService(serviceName);
-    this.services.set(serviceName, service);
+  addService(type: string | { UUID: string }, displayName?: string, subtype?: string) {
+    const uuid = typeof type === 'string' ? type : type.UUID;
+    const service = new FakeService(displayName || uuid, uuid, subtype);
+    this.services.push(service);
     return service;
   }
 
   removeService(service: FakeService) {
-    for (const [name, existingService] of this.services.entries()) {
-      if (existingService === service) {
-        this.services.delete(name);
-      }
-    }
+    this.services = this.services.filter((existingService) => existingService !== service);
+  }
+
+  hasService(service: string | { UUID: string }) {
+    return this.getService(service) !== undefined;
   }
 }
 
@@ -200,16 +218,13 @@ function createTestAccessoryState() {
 function createTestServiceState() {
   const logs: string[] = [];
   const accessory = new FakeAccessory();
-  [
-    'fanOccupancySensor',
-    'lightOccupancySensor',
-    'TemperatureSensor',
-    'HumiditySensor',
-    'UVCSwitch',
-    'ecoModeSwitch',
-  ].forEach((name) => {
-    accessory.services.set(name, new FakeService(name));
-  });
+  accessory.addService('OccupancySensor', 'Fan Occupancy', 'occupancySensor-1');
+  accessory.addService('OccupancySensor', 'Light Occupancy', 'occupancySensor-2');
+  accessory.addService('TemperatureSensor', 'Bedroom Temperature');
+  accessory.addService('HumiditySensor', 'Bedroom Humidity');
+  accessory.addService('Switch', 'UVC', 'switch-6');
+  accessory.addService('Switch', 'Eco Mode', 'switch-5');
+  accessory.addService('Lightbulb', 'Bedroom Uplight', 'light-2');
 
   return {
     accessory,
@@ -728,12 +743,13 @@ function testUnsupportedCapabilityServicesAreRemovedFromCache() {
 
   __test__.makeServices(state as never);
 
-  assert.equal(accessory.services.has('fanOccupancySensor'), false);
-  assert.equal(accessory.services.has('lightOccupancySensor'), false);
-  assert.equal(accessory.services.has('TemperatureSensor'), false);
-  assert.equal(accessory.services.has('HumiditySensor'), false);
-  assert.equal(accessory.services.has('UVCSwitch'), false);
-  assert.equal(accessory.services.has('ecoModeSwitch'), false);
+  assert.equal(accessory.hasService('occupancySensor-1'), false);
+  assert.equal(accessory.hasService('occupancySensor-2'), false);
+  assert.equal(accessory.hasService('TemperatureSensor'), false);
+  assert.equal(accessory.hasService('HumiditySensor'), false);
+  assert.equal(accessory.hasService('switch-6'), false);
+  assert.equal(accessory.hasService('switch-5'), false);
+  assert.equal(accessory.hasService('light-2'), false);
 }
 
 async function testReconnectOnClose() {

@@ -9,35 +9,40 @@
     </p>
   </header>
 
-  <section class="panel">
+  <section class="panel plugin-settings-panel">
     <div class="section-header">
       <div>
-        <h2>Platform</h2>
+        <h2>Plugin Settings</h2>
         <p class="help">
-          This plugin keeps the legacy platform alias for compatibility while
-          exposing modern Fanv2 controls in HomeKit.
+          Set the Homebridge display name for this plugin. Fan setup and live
+          diagnostics are handled below.
         </p>
       </div>
       <span id="config-status" class="status-pill warn">Checking config</span>
     </div>
 
-    <div class="settings-grid">
+    <div class="settings-grid plugin-settings-grid">
       <label class="field">
-        <span>Platform Name</span>
+        <span>Plugin Display Name</span>
         <input id="platform-name" type="text" placeholder="Big Ass Fans" />
-        <small>Display name for this Homebridge platform instance.</small>
+        <small>Used for this Homebridge platform instance.</small>
       </label>
 
+      <div class="plugin-settings-actions">
+        <button id="save-settings-top" class="primary">Save Settings</button>
+      </div>
+    </div>
+
+    <details class="advanced-settings">
+      <summary>Advanced platform details</summary>
       <label class="field readonly">
-        <span>Platform Alias</span>
+        <span>Legacy Platform Alias</span>
         <input id="platform-alias" type="text" value="BigAssFans-i6" readonly />
-        <small>Kept unchanged so existing Homebridge configs continue to work.</small>
+        <small>
+          Kept unchanged so existing Homebridge configs continue to work.
+        </small>
       </label>
-    </div>
-
-    <div class="actions">
-      <button id="save-settings-top" class="primary">Save Settings</button>
-    </div>
+    </details>
   </section>
 
   <section class="panel">
