@@ -4,7 +4,7 @@
 <img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
 </h1>
 
-## homebridge-bigassfans-2 v1.1.37
+## homebridge-bigassfans-2 v1.1.38
 
 </span>
 
@@ -37,6 +37,11 @@ This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge
 - Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
 - Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
 - Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+
+**v1.1.38**
+- Calmed the custom admin UI typography, surfaces, and section hierarchy for better readability in Homebridge dark mode.
+- Tucked inactive or likely unsupported options into collapsed advanced sections so hidden humidity, light, occupancy, and optional-service controls do not dominate each fan card.
+- Improved stale HomeKit service cleanup by looking up subtype-based services directly and persisting service-list changes back to Homebridge after capability-based cleanup.
 
 **v1.1.37**
 - Removed additional stale cached HomeKit services by subtype and service UUID, including uplight and humidity services that could remain visible after capability detection hid them.

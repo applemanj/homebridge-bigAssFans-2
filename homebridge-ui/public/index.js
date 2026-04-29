@@ -116,6 +116,19 @@ const booleanFields = [
   },
 ];
 
+const primaryServiceFields = new Set([
+  "disableDirectionControl",
+  "noLights",
+  "enableIncrementalButtons",
+  "enableDebugPort",
+]);
+
+const lightServiceFields = new Set([
+  "showLightAutoSwitch",
+  "showDimToWarmSwitch",
+  "showStandbyLED",
+]);
+
 const knownFanFields = [
   "name",
   "ip",
@@ -237,13 +250,42 @@ function createFanCard(fan, index) {
   );
   card.appendChild(identityGrid);
 
-  card.appendChild(
-    createSettingSection("Capability Detection", [
-      createLightSelect(index, "downlightEquipped", "Downlight detection", getLightOverride(fan.downlightEquipped), "Auto-detect unless the plugin guesses wrong."),
-      createLightSelect(index, "uplightEquipped", "Uplight detection", getLightOverride(fan.uplightEquipped), "Auto-detect unless the plugin guesses wrong."),
-      createNumberField(index, "incrementalButtonsDelay", "Incremental button reset delay (ms)", getValue(fan, "incrementalButtonsDelay"), "Auto-reset delay for optional +/- buttons."),
-    ])
-  );
+  const tuckedCapabilityFields = [];
+  const lightsHidden = getValue(fan, "noLights") === true;
+  const incrementalButtonsEnabled = getValue(fan, "enableIncrementalButtons") === true;
+  const downlightDetection = createLightSelect(index, "downlightEquipped", "Downlight detection", getLightOverride(fan.downlightEquipped), "Auto-detect unless the plugin guesses wrong.");
+  const uplightDetection = createLightSelect(index, "uplightEquipped", "Uplight detection", getLightOverride(fan.uplightEquipped), "Auto-detect unless the plugin guesses wrong.");
+  const incrementalButtonDelay = createNumberField(index, "incrementalButtonsDelay", "Incremental button reset delay (ms)", getValue(fan, "incrementalButtonsDelay"), "Auto-reset delay for optional +/- buttons.");
+
+  if (lightsHidden) {
+    tuckedCapabilityFields.push(downlightDetection, uplightDetection);
+  }
+  if (!incrementalButtonsEnabled) {
+    tuckedCapabilityFields.push(incrementalButtonDelay);
+  }
+
+  const visibleCapabilityFields = [
+    ...(lightsHidden ? [] : [downlightDetection, uplightDetection]),
+    ...(incrementalButtonsEnabled ? [incrementalButtonDelay] : []),
+  ];
+
+  if (visibleCapabilityFields.length > 0) {
+    card.appendChild(
+      createSettingSection("Capability Detection", visibleCapabilityFields)
+    );
+  }
+
+  if (tuckedCapabilityFields.length > 0) {
+    card.appendChild(
+      createDetailsSection(
+        "Advanced capability controls",
+        lightsHidden
+          ? "Light detection controls are tucked away because light services are hidden."
+          : "Controls that only matter when optional services are enabled.",
+        tuckedCapabilityFields
+      )
+    );
+  }
 
   const checkboxSection = document.createElement("section");
   checkboxSection.className = "setting-section";
@@ -251,11 +293,36 @@ function createFanCard(fan, index) {
   checkboxTitle.textContent = "HomeKit Services";
   const checkboxGrid = document.createElement("div");
   checkboxGrid.className = "checkbox-grid";
+  const tuckedServices = [];
   booleanFields.forEach((field) => {
-    checkboxGrid.appendChild(createCheckbox(index, field, getValue(fan, field.key)));
+    const checkbox = createCheckbox(index, field, getValue(fan, field.key));
+    if (shouldTuckServiceField(fan, index, field.key)) {
+      tuckedServices.push(checkbox);
+    } else {
+      checkboxGrid.appendChild(checkbox);
+    }
   });
-  checkboxSection.append(checkboxTitle, checkboxGrid);
+  checkboxSection.append(checkboxTitle);
+  if (checkboxGrid.children.length > 0) {
+    checkboxSection.appendChild(checkboxGrid);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "help compact-help";
+    empty.textContent = "No optional services are currently exposed.";
+    checkboxSection.appendChild(empty);
+  }
   card.appendChild(checkboxSection);
+
+  if (tuckedServices.length > 0) {
+    card.appendChild(
+      createDetailsSection(
+        `Additional / hidden services (${tuckedServices.length})`,
+        "These are not currently exposed or are likely unsupported by this fan. Expand only if you need to override detection.",
+        tuckedServices,
+        "checkbox-grid"
+      )
+    );
+  }
 
   const actions = document.createElement("div");
   actions.className = "actions";
@@ -305,6 +372,21 @@ function createSettingSection(title, children) {
   children.forEach((child) => grid.appendChild(child));
   section.append(heading, grid);
   return section;
+}
+
+function createDetailsSection(title, help, children, gridClassName = "settings-grid") {
+  const details = document.createElement("details");
+  details.className = "details-section";
+  const summary = document.createElement("summary");
+  summary.textContent = title;
+  const helpText = document.createElement("p");
+  helpText.className = "help compact-help";
+  helpText.textContent = help;
+  const grid = document.createElement("div");
+  grid.className = gridClassName;
+  children.forEach((child) => grid.appendChild(child));
+  details.append(summary, helpText, grid);
+  return details;
 }
 
 function createTextField(index, key, label, value, placeholder, help) {
@@ -376,6 +458,36 @@ function createCheckbox(index, field, checked) {
 
   label.append(input, text);
   return label;
+}
+
+function shouldTuckServiceField(fan, index, key) {
+  if (primaryServiceFields.has(key)) {
+    return false;
+  }
+
+  const capabilities = state.diagnostics.devices[index]?.result?.capabilities;
+  if (capabilities) {
+    if (key === "showTemperature") {
+      return !capabilities.hasTempSensor;
+    }
+    if (key === "showHumidity") {
+      return !capabilities.hasHumiditySensor;
+    }
+    if (key === "showFanOccupancySensor" || key === "showLightOccupancySensor") {
+      return !capabilities.hasOccupancySensor;
+    }
+    if (key === "showStandbyLED") {
+      return !capabilities.hasStandbyLED;
+    }
+    if (key === "showEcoModeSwitch") {
+      return !capabilities.hasEcoMode;
+    }
+    if (lightServiceFields.has(key)) {
+      return getValue(fan, "noLights") === true || (!capabilities.hasLight && !capabilities.hasUplight);
+    }
+  }
+
+  return getValue(fan, key) === false;
 }
 
 function createSpan(text) {

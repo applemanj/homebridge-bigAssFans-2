@@ -91,6 +91,11 @@ class FakeAccessory {
     return this.services.find((candidate) => candidate.UUID === service.UUID);
   }
 
+  getServiceById(service: string | { UUID: string }, subtype: string) {
+    const uuid = typeof service === 'string' ? service : service.UUID;
+    return this.services.find((candidate) => candidate.UUID === uuid && candidate.subtype === subtype);
+  }
+
   addService(type: string | { UUID: string }, displayName?: string, subtype?: string) {
     const uuid = typeof type === 'string' ? type : type.UUID;
     const service = new FakeService(displayName || uuid, uuid, subtype);
@@ -217,6 +222,7 @@ function createTestAccessoryState() {
 
 function createTestServiceState() {
   const logs: string[] = [];
+  const updatedAccessories: FakeAccessory[] = [];
   const accessory = new FakeAccessory();
   accessory.addService('OccupancySensor', 'Fan Occupancy', 'occupancySensor-1');
   accessory.addService('OccupancySensor', 'Light Occupancy', 'occupancySensor-2');
@@ -286,9 +292,13 @@ function createTestServiceState() {
           info: (message: string) => logs.push(message),
           debug: (message: string) => logs.push(message),
         },
+        api: {
+          updatePlatformAccessories: (accessories: FakeAccessory[]) => updatedAccessories.push(...accessories),
+        },
       },
     },
     logs,
+    updatedAccessories,
   };
 }
 
@@ -739,7 +749,7 @@ function testCapabilitySuggestionsOnlyHideUnsupportedOptions() {
 }
 
 function testUnsupportedCapabilityServicesAreRemovedFromCache() {
-  const { accessory, state } = createTestServiceState();
+  const { accessory, state, updatedAccessories } = createTestServiceState();
 
   __test__.makeServices(state as never);
 
@@ -750,6 +760,7 @@ function testUnsupportedCapabilityServicesAreRemovedFromCache() {
   assert.equal(accessory.hasService('switch-6'), false);
   assert.equal(accessory.hasService('switch-5'), false);
   assert.equal(accessory.hasService('light-2'), false);
+  assert.equal(updatedAccessories.includes(accessory), true);
 }
 
 async function testReconnectOnClose() {

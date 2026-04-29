@@ -1,5 +1,14 @@
 ## Release Notes
 
+### v1.1.38
+
+**Admin UI Readability and Service Cleanup Persistence**
+- Calmed the custom admin UI typography, surfaces, and section hierarchy for better readability in Homebridge dark mode.
+- Tucked inactive or likely unsupported options into collapsed advanced sections so hidden humidity, light, occupancy, and optional-service controls do not dominate each fan card.
+- Improved stale HomeKit service cleanup by looking up subtype-based services directly and persisting service-list changes back to Homebridge after capability-based cleanup.
+
+---
+
 ### v1.1.37
 
 **HomeKit Service Cleanup and Admin UI Polish**

@@ -12,6 +12,7 @@
   --plugin-tile-ink: inherit;
   --plugin-tile-muted: currentColor;
   --plugin-focus-ring: rgba(10, 132, 255, 0.22);
+  --plugin-control-surface: rgba(148, 163, 184, 0.1);
 }
 
 * {
@@ -34,7 +35,7 @@ body {
   font-weight: var(--bs-body-font-weight, 400);
   line-height: var(--bs-body-line-height, 1.5);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: geometricPrecision;
 }
 
 .plugin-container {
@@ -48,9 +49,9 @@ body {
 }
 
 header h1 {
-  font-size: clamp(1.75rem, 2.3vw, 2.15rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
+  font-size: clamp(1.65rem, 2.2vw, 2rem);
+  font-weight: 620;
+  letter-spacing: -0.025em;
   line-height: 1.1;
   margin: 0 0 6px;
 }
@@ -64,18 +65,18 @@ header h1 {
 
 .panel {
   color: inherit;
-  background: var(--plugin-subtle-surface);
+  background: rgba(148, 163, 184, 0.055);
   border: 1px solid var(--plugin-border);
   border-radius: 14px;
   padding: 22px 24px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: none;
 }
 
 .panel h2 {
   margin: 0 0 6px;
   font-size: 1.16rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 620;
+  letter-spacing: -0.015em;
   line-height: 1.25;
 }
 
@@ -130,11 +131,11 @@ header h1 {
   gap: 8px;
   color: inherit;
   font-size: 0.93rem;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .field > span {
-  font-weight: 650;
+  font-weight: 560;
   letter-spacing: -0.01em;
 }
 
@@ -156,9 +157,9 @@ header h1 {
   border: 1px solid var(--plugin-border);
   border-radius: 0.55rem;
   color: inherit;
-  background-color: rgba(148, 163, 184, 0.07);
+  background-color: var(--plugin-control-surface);
   font: inherit;
-  font-weight: 500;
+  font-weight: 420;
 }
 
 .field select option {
@@ -173,7 +174,7 @@ header h1 {
 
 .field input:focus,
 .field select:focus {
-  background-color: rgba(148, 163, 184, 0.1);
+  background-color: rgba(148, 163, 184, 0.14);
   border-color: var(--plugin-accent);
   box-shadow: 0 0 0 0.2rem var(--plugin-focus-ring);
   outline: none;
@@ -199,7 +200,7 @@ header h1 {
   margin-top: 0;
   color: inherit;
   font-size: 0.94rem;
-  font-weight: 550;
+  font-weight: 400;
   line-height: 1.3;
 }
 
@@ -213,6 +214,7 @@ header h1 {
 
 .checkbox > span {
   display: block;
+  font-weight: 520;
 }
 
 .hidden {
@@ -247,6 +249,32 @@ header h1 {
 .advanced-settings .field {
   max-width: 420px;
   margin-top: 10px;
+}
+
+.details-section {
+  margin-top: 16px;
+  padding: 12px 14px;
+  color: inherit;
+  background: rgba(148, 163, 184, 0.045);
+  border: 1px solid var(--plugin-border);
+  border-radius: 10px;
+}
+
+.details-section summary {
+  cursor: pointer;
+  color: currentColor;
+  font-size: 0.9rem;
+  font-weight: 560;
+}
+
+.details-section .settings-grid,
+.details-section .checkbox-grid {
+  margin-top: 12px;
+}
+
+.compact-help {
+  margin: 6px 0 0;
+  font-size: 0.9rem;
 }
 
 .actions {
@@ -289,7 +317,7 @@ button:disabled {
   color: var(--bs-btn-color, #fff);
   background: var(--plugin-accent);
   border: 1px solid var(--plugin-accent);
-  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.18);
+  box-shadow: 0 6px 14px rgba(10, 132, 255, 0.16);
 }
 
 .primary:hover {
@@ -374,10 +402,10 @@ button:disabled {
 .fan-card,
 .diagnostic-device {
   color: var(--plugin-tile-ink);
-  background: rgba(148, 163, 184, 0.075);
+  background: rgba(148, 163, 184, 0.06);
   border: 1px solid var(--plugin-border);
   border-radius: 12px;
-  padding: 20px;
+  padding: 18px;
 }
 
 .device-header {
@@ -391,8 +419,8 @@ button:disabled {
 .device-header h3 {
   margin: 0;
   font-size: 1.08rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 620;
+  letter-spacing: -0.015em;
 }
 
 .setting-section {
@@ -403,10 +431,10 @@ button:disabled {
   margin: 0 0 12px;
   color: currentColor;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.72;
+  opacity: 0.78;
 }
 
 .checkbox-grid {
@@ -421,7 +449,7 @@ button:disabled {
   align-items: center;
   border: 1px solid var(--plugin-border);
   border-radius: 999px;
-  font-weight: 650;
+  font-weight: 560;
   line-height: 1.2;
   white-space: nowrap;
 }

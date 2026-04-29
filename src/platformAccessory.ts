@@ -1079,15 +1079,25 @@ function makeServices(pA: BAF) {
     if (pA.showLightOccupancySensor) {
       pA.platform.log.info('\'"showLightOccupancySensor": true\' in config.json but this fan does not have an Occupancy Sensor');
     }
-    zapService(pA, 'fanOccupancySensor', ['occupancySensor-1']);
-    zapService(pA, 'lightOccupancySensor', ['occupancySensor-2']);
+    zapService(
+      pA,
+      'fanOccupancySensor',
+      ['occupancySensor-1'],
+      [{ serviceType: pA.platform.Service.OccupancySensor, subtype: 'occupancySensor-1' }],
+    );
+    zapService(
+      pA,
+      'lightOccupancySensor',
+      ['occupancySensor-2'],
+      [{ serviceType: pA.platform.Service.OccupancySensor, subtype: 'occupancySensor-2' }],
+    );
   }
 
   // downlight
   if (pA.capabilities.hasLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} downlight disabled by configuration '"noLights": true'`);
-      zapService(pA, 'downlight', ['light-1']);
+      zapService(pA, 'downlight', ['light-1'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-1' }]);
     } else {
       pA.downlightBulbService = pA.accessory.getService(pA.platform.Service.Lightbulb) ||
         pA.accessory.getService('downlight') ||
@@ -1111,14 +1121,14 @@ function makeServices(pA: BAF) {
       pA.bulbCount++;
     }
   } else {
-    zapService(pA, 'downlight', ['light-1']);
+    zapService(pA, 'downlight', ['light-1'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-1' }]);
   }
 
   // uplight
   if (pA.capabilities.hasUplight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} uplight disabled by configuration '"noLights": true'`);
-      zapService(pA, 'uplight', ['light-2']);
+      zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
     } else {
       pA.uplightBulbService = pA.accessory.getService('uplight') ||
         pA.accessory.addService(pA.platform.Service.Lightbulb, 'uplight', 'light-2');
@@ -1135,13 +1145,13 @@ function makeServices(pA: BAF) {
       pA.bulbCount++;
     }
   } else {
-    zapService(pA, 'uplight', ['light-2']);
+    zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
   }
 
   if (pA.capabilities.hasUVCLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} UVC light disabled by configuration '"noLights": true'`);
-      zapService(pA, 'UVCSwitch', ['switch-6']);
+      zapService(pA, 'UVCSwitch', ['switch-6'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-6' }]);
     } else {
       if (pA.UVCSwitchService === undefined) {
         pA.UVCSwitchService = pA.accessory.getService('UVCSwitch') ||
@@ -1154,7 +1164,7 @@ function makeServices(pA: BAF) {
       }
     }
   } else {
-    zapService(pA, 'UVCSwitch', ['switch-6']);
+    zapService(pA, 'UVCSwitch', ['switch-6'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-6' }]);
   }
 
   // Current Temperature
@@ -1223,10 +1233,10 @@ function makeServices(pA: BAF) {
         .onGet(pA.getEcoModeSwitchOnState.bind(pA));
     } else {
       pA.platform.log.info(`'"showEcoModeSwitch": true' in config.json but this fan (${pA.Name}) does not support Eco Mode`);
-      zapService(pA, 'ecoModeSwitch', ['switch-5']);
+      zapService(pA, 'ecoModeSwitch', ['switch-5'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-5' }]);
     }
   } else {
-    zapService(pA, 'ecoModeSwitch', ['switch-5']);
+    zapService(pA, 'ecoModeSwitch', ['switch-5'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-5' }]);
   }
 
   // standbyLED
@@ -1248,8 +1258,8 @@ function makeServices(pA: BAF) {
     makeStandbyLED(pA);
   } else {
     debugLog(pA, 'newcode', 1, 'zap standbyEnabledSwitch and standbyLED');
-    zapService(pA, 'standbyEnabledSwitch', ['switch-7']);
-    zapService(pA, 'standbyLED', ['light-3']);
+    zapService(pA, 'standbyEnabledSwitch', ['switch-7'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-7' }]);
+    zapService(pA, 'standbyLED', ['light-3'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-3' }]);
   }
 
   debugLog(pA, 'newcode', 1, `enableIncrementalButtons is ${pA.enableIncrementalButtons}`);
@@ -1287,17 +1297,23 @@ function makeServices(pA: BAF) {
       .onSet(pA.setFanFasterServiceOnState.bind(pA));
 
   } else {
-    zapService(pA, 'downlightDarkenButton', ['button-1']);
-    zapService(pA, 'downlightLightenButton', ['button-2']);
-    zapService(pA, 'fanSlowerButton', ['button-3']);
-    zapService(pA, 'fanFasterButton', ['button-4']);
+    zapService(pA, 'downlightDarkenButton', ['button-1'], [{ serviceType: pA.platform.Service.Switch, subtype: 'button-1' }]);
+    zapService(pA, 'downlightLightenButton', ['button-2'], [{ serviceType: pA.platform.Service.Switch, subtype: 'button-2' }]);
+    zapService(pA, 'fanSlowerButton', ['button-3'], [{ serviceType: pA.platform.Service.Switch, subtype: 'button-3' }]);
+    zapService(pA, 'fanFasterButton', ['button-4'], [{ serviceType: pA.platform.Service.Switch, subtype: 'button-4' }]);
   }
 
+  pA.platform.api.updatePlatformAccessories([pA.accessory]);
   debugLog(pA, 'progress', 1, 'leaving makeServices');
 }
 
+type ServiceSubtypeAlias = {
+  serviceType: WithUUID<typeof Service>;
+  subtype: string;
+};
+
 /** Removes matching services from the accessory cache by display name, configured name, or subtype. */
-function zapService(pA:BAF, serviceName: string, aliases: string[] = []) {
+function zapService(pA:BAF, serviceName: string, aliases: string[] = [], subtypeAliases: ServiceSubtypeAlias[] = []) {
   const serviceKeys = new Set([serviceName, ...aliases].map(normalizeServiceKey));
   const services = new Set<Service>();
 
@@ -1305,6 +1321,13 @@ function zapService(pA:BAF, serviceName: string, aliases: string[] = []) {
     const directService = pA.accessory.getService(key);
     if (directService) {
       services.add(directService);
+    }
+  }
+
+  for (const alias of subtypeAliases) {
+    const serviceById = pA.accessory.getServiceById(alias.serviceType, alias.subtype);
+    if (serviceById) {
+      services.add(serviceById);
     }
   }
 
