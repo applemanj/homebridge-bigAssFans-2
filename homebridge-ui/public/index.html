@@ -1,40 +1,32 @@
 <link rel="stylesheet" href="styles.css" />
 
 <main class="plugin-container">
-  <header>
-    <h1>Big Ass Fans</h1>
-    <p class="subtitle">
-      Configure fan endpoints, HomeKit service exposure, and troubleshooting
-      diagnostics.
-    </p>
+  <header class="page-header">
+    <div>
+      <h1>Big Ass Fans</h1>
+      <p class="subtitle">
+        Configure fan endpoints, HomeKit service exposure, and troubleshooting
+        diagnostics.
+      </p>
+    </div>
+    <div class="header-actions">
+      <span id="config-status" class="status-pill warn">Checking config</span>
+      <button id="save-settings-top" class="primary">Save Settings</button>
+    </div>
   </header>
 
-  <section class="panel plugin-settings-panel">
-    <div class="section-header">
-      <div>
-        <h2>Plugin Settings</h2>
-        <p class="help">
-          Set the Homebridge display name for this plugin. Fan setup and live
-          diagnostics are handled below.
-        </p>
-      </div>
-      <span id="config-status" class="status-pill warn">Checking config</span>
-    </div>
-
-    <div class="settings-grid plugin-settings-grid">
+  <details class="plugin-details">
+    <summary>Plugin details</summary>
+    <p class="help compact-help">
+      These fields are rarely changed. Fan setup and diagnostics are below.
+    </p>
+    <div class="settings-grid plugin-details-grid">
       <label class="field">
         <span>Plugin Display Name</span>
         <input id="platform-name" type="text" placeholder="Big Ass Fans" />
         <small>Used for this Homebridge platform instance.</small>
       </label>
 
-      <div class="plugin-settings-actions">
-        <button id="save-settings-top" class="primary">Save Settings</button>
-      </div>
-    </div>
-
-    <details class="advanced-settings">
-      <summary>Advanced platform details</summary>
       <label class="field readonly">
         <span>Legacy Platform Alias</span>
         <input id="platform-alias" type="text" value="BigAssFans-i6" readonly />
@@ -42,8 +34,8 @@
           Kept unchanged so existing Homebridge configs continue to work.
         </small>
       </label>
-    </details>
-  </section>
+    </div>
+  </details>
 
   <section class="panel">
     <div class="section-header">

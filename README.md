@@ -1,274 +1,64 @@
-<span align="center">
-<h1 align="center"><img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/IMG_3799.jpg"/>
-<img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/HaikuH.jpg"/>
-<img src="https://raw.githubusercontent.com/oogje/homebridge-i6-bigAssFans/main/es6.jpeg"/>
-</h1>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/applemanj/homebridge-bigAssFans-2/main/IMG_3799.jpg" alt="Big Ass Fans i6" />
+  <img src="https://raw.githubusercontent.com/applemanj/homebridge-bigAssFans-2/main/HaikuH.jpg" alt="Haiku fan" />
+  <img src="https://raw.githubusercontent.com/applemanj/homebridge-bigAssFans-2/main/es6.jpeg" alt="Big Ass Fans es6" />
+</p>
 
-## homebridge-bigassfans-2 v1.1.38
+# homebridge-bigassfans-2 v1.1.39
 
-</span>
+`homebridge-bigassfans-2` is a Homebridge platform plugin for Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series ceiling fans running firmware 3.0 or newer.
 
-`homebridge-bigassfans-2` is a Homebridge plugin for controlling Big Ass Fans i6, es6, Haiku H/I Series, and Haiku L Series ceiling fans with firmware version 3.0 or greater. Compatible with Homebridge 1.8+ and Homebridge 2.0.
+This fork builds on [`homebridge-i6-bigAssFans`](https://github.com/oogje/homebridge-i6-bigAssFans) by [@oogje](https://github.com/oogje), modernizing the plugin for current Homebridge releases with Fanv2 controls, improved reconnect/state handling, safer parsing, live diagnostics, and a custom Homebridge Settings UI.
 
-This is a fork of [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge-i6-bigAssFans) by [@oogje](https://github.com/oogje), updated and modernized with Fanv2 support, bug fixes, and improved code quality.
+## Highlights
 
-### What's New in This Fork
+- Compatible with Homebridge 1.8+ and Homebridge 2.0.
+- Uses HomeKit `Fanv2` for native fan controls.
+- Maps Big Ass Fans **Whoosh** mode to HomeKit `SwingMode`.
+- Maps Big Ass Fans fan auto mode to HomeKit `TargetFanState`.
+- Supports fan speed, on/off, direction, lights, color temperature, Eco Mode, occupancy, temperature, humidity, UVC, and standby LED features when supported by the fan.
+- Keeps HomeKit state in sync with changes made outside HomeKit, including the Big Ass Fans app, on the next state refresh.
+- Includes a custom Settings UI with per-fan diagnostics and conservative capability-based suggestions.
 
-**Homebridge 2.0 / Fanv2 Service**
-- Uses the modern `Fanv2` HomeKit service instead of the legacy `Fan` service.
-- **Whoosh Mode** is now a native `SwingMode` characteristic in the fan tile -- no separate switch needed.
-- **Fan Auto Mode** is now a native `TargetFanState` characteristic (Manual / Auto) in the fan tile -- no separate switch needed.
-- `CurrentFanState` reports whether the fan is Inactive, Idle, or Blowing Air.
-- Legacy cached `Fan` and `whooshSwitch` services are automatically cleaned up on upgrade.
+See [Release Notes.md](https://github.com/applemanj/homebridge-bigAssFans-2/blob/main/Release%20Notes.md) for the full release history.
 
-> **Home App labeling note:** Apple labels the native `SwingMode` control as **Oscillate** in the Home app. In this plugin, **Oscillate = Big Ass Fans Whoosh**. Apple also labels `TargetFanState` as **Fan Mode: Manual / Auto**; in this plugin, **Auto = the fan's built-in Big Ass Fans auto mode**.
+## What's New
 
-**Bug Fixes**
-- **Connection stability** -- Reconnections now re-send the initialization and capability query to the fan, fixing the issue where a daily restart was required to restore communication (upstream [#41](https://github.com/oogje/homebridge-i6-bigAssFans/issues/41)).
-- **Fans offline at startup** -- All connection errors (including `ECONNREFUSED`) now trigger automatic retry with exponential backoff, so fans that are powered off or unreachable at boot will connect once available (upstream [#35](https://github.com/oogje/homebridge-i6-bigAssFans/issues/35)).
-- **mDNS hostname support** -- Removed forced IPv4 (`family: 4`) from the TCP connection, allowing mDNS `.local` hostnames and IPv6 to work correctly (upstream [#29](https://github.com/oogje/homebridge-i6-bigAssFans/issues/29)).
-- **varint encoding bug** -- Fixed an operator-precedence bug in `varint_encode` where the continuation bit (`| 0x80`) was applied to the return value of `Array.push()` instead of the byte being pushed. This could cause incorrect protobuf encoding for values over 127 (e.g., color temperature).
-- **Multi-fan shared state** -- Eight module-level variables (debug state, reboot tracking, occupancy tracking, etc.) were shared across all fan instances, causing cross-talk between fans in multi-fan setups. These are now per-instance.
+**v1.1.39**
 
-**Code Quality**
-- Removed unnecessary `declare const Buffer` that suppressed TypeScript type checking.
-- Fixed `debugLevels` type from `number[]` to `Record<string, number>`.
-- Modernized `import net = require('net')` to `import * as net from 'net'`.
-- Updated ESLint config to remove deprecated rules from `@typescript-eslint` v8.
-- Updated `tsconfig.json` with `skipLibCheck` for HB2 type compatibility.
-- Stale chunk fragments are now cleared on reconnect to prevent corrupt protobuf data.
+- Removed the large platform-name panel from the normal admin UI flow.
+- Moved Save Settings and configuration status into the page header.
+- Improved status badge contrast for better readability in Homebridge dark mode.
+- Tightened this README for public npm/GitHub presentation.
 
-**v1.1.38**
-- Calmed the custom admin UI typography, surfaces, and section hierarchy for better readability in Homebridge dark mode.
-- Tucked inactive or likely unsupported options into collapsed advanced sections so hidden humidity, light, occupancy, and optional-service controls do not dominate each fan card.
-- Improved stale HomeKit service cleanup by looking up subtype-based services directly and persisting service-list changes back to Homebridge after capability-based cleanup.
+## Requirements
 
-**v1.1.37**
-- Removed additional stale cached HomeKit services by subtype and service UUID, including uplight and humidity services that could remain visible after capability detection hid them.
-- Improved regression coverage for cached HomeKit service cleanup.
-- Refined the admin UI so plugin settings are less prominent, the legacy platform alias lives under advanced details, and dropdown options remain readable in dark themes.
+- Homebridge 1.8.0 or newer, including Homebridge 2.0.
+- Node.js 20.15.1 or newer. Node 20, 22, and 24 are tested in CI.
+- A supported Big Ass Fans / Haiku fan on the same network as Homebridge.
+- The fan's IP address or hostname and MAC address from the Big Ass Fans app Wi-Fi settings.
 
-**v1.1.36**
-- Removed stale HomeKit services from cached accessories when live capability detection shows the fan does not support temperature, occupancy, UVC, or Eco Mode services.
-- Clarified that **Apply Suggested Settings** updates plugin settings first; save settings and restart the child bridge to remove the hidden services from HomeKit.
+## Installation
 
-**v1.1.35**
-- Improved **Apply Suggested Settings** feedback so the diagnostics card confirms applied suggestions and the changed fan settings are briefly highlighted.
-
-**v1.1.34**
-- Added conservative one-click admin UI suggestions for live diagnostics. When a fan does not report an enabled sensor or optional switch capability, the diagnostics card can apply the safer hidden setting and prompt you to save.
-- Added shared suggestion logic and regression coverage so unsupported temperature, humidity, occupancy, standby LED, and Eco Mode options can be cleaned up consistently.
-
-**v1.1.33**
-- Added shared capability parsing/summary helpers used by both runtime logging and the custom admin diagnostics.
-- Live **Test Connection** and **Test All Fans** diagnostics now parse fan capability reports when available and show detected capabilities, exposed services, and config guidance.
-- Improved admin button contrast and fixed the downlight/uplight override log typo.
-
-**v1.1.32**
-- Polished the custom Settings UI typography, spacing, cards, buttons, and labels so it feels more native inside Homebridge.
-- Improved **Test All Fans** diagnostics by checking fans sequentially instead of opening all diagnostic sockets at once.
-- Treats a successful diagnostic TCP connection as `connected` even if the fan does not send probe bytes before the timeout, while still reporting `responded` when bytes are received.
-
-**v1.1.31**
-- Added live admin diagnostics backed by a Homebridge custom UI server.
-- Added per-fan **Test Connection** and diagnostics-level **Test All Fans** actions.
-- Live checks connect to each fan on port `31415`, send the same non-mutating startup probes, and report connection/response status, latency, and bytes received.
-
-**v1.1.30**
-- Updated the custom admin UI to inherit Homebridge's light/dark theme instead of forcing a separate dark design.
-- Kept custom styling focused on fan cards, diagnostics, status pills, and workflow affordances.
-- Removed the duplicate Add Fan action from the Platform panel and made the Fans panel action clearer.
-
-**v1.1.29**
-- Added a custom Homebridge Settings UI modeled after the `homebridge-roborock-vacuum2` admin experience.
-- The UI now uses the shared dark design system, panel layout, settings grids, status pills, toast feedback, and diagnostics card structure.
-- The admin UI preserves child-bridge and unknown config keys while keeping optional fan settings omitted when they match defaults.
-- Updated `config.schema.json` and README documentation so the UI-exposed settings match the documented behavior.
-
-**v1.1.28**
-- Improved the Homebridge Settings UI wording and validation for fan entries.
-- Changed downlight and uplight detection controls from ambiguous checkboxes to explicit `Auto Detect`, `Force Present`, and `Force Hidden` choices.
-- Added regression coverage so the new `auto` value behaves the same as omitting the override in manual config.
-
-**v1.1.27**
-- Gated the speed and on-off diagnostic timing logs behind `enableDebugPort` so normal installations stay quiet while troubleshooting remains available.
-- Updated the Homebridge UI schema wording for `probeFrequency` to reflect that it controls both keep-alive probes and state refreshes.
-- Added the regression harness to `prepublishOnly` so manual npm publishes run the same safety checks as CI.
-
-**v1.1.26**
-- Accepted matching fan speed reports that arrive during the debounce window instead of ignoring them as stale, which should prevent the first low-speed request from appearing to take a full probe cycle.
-- Added regression coverage for the matching-report-during-debounce path.
-
-**v1.1.25**
-- Updated the `Active` on-off path to update HomeKit immediately instead of waiting for the fan echo, which should make the first on request feel more responsive.
-- Suppressed rapid duplicate `Active` writes so HomeKit bursts do not resend the same on-off command multiple times.
-
-**v1.1.24**
-- Cleared stale speed-diagnostic state when the fan turns off or the socket/write path fails, so later off-state echoes no longer get misattributed to an older speed request.
-- Added regression coverage for the diagnostic reset path after a fan-off event.
-
-**v1.1.23**
-- Added temporary `Active` / on-off diagnostics so logs now show when HomeKit sends an on-off request and when the fan reports its on-off state back.
-- Added regression coverage for the new on-off diagnostic path.
-
-**v1.1.22**
-- Fixed low-end slider mapping so very small nonzero HomeKit percentages now clamp to the fan's minimum real speed instead of rounding down to off.
-- Added regression coverage for `1%` and other tiny nonzero slider values.
-
-**v1.1.21**
-- Smoothed the HomeKit slider further by deferring the preset snap until the debounced fan write actually fires, instead of snapping for every intermediate drag value.
-- Added regression coverage to make sure rapid slider drags only send the final discrete fan speed.
-
-**v1.1.20**
-- Smoothed out HomeKit speed slider drags by coalescing rapid slider writes into the final fan step instead of sending every intermediate value.
-- Briefly ignores mismatched fan speed echoes right after a HomeKit speed change so older fan reports do not yank the slider back to a previous preset.
-
-**v1.1.19**
-- Updated the HomeKit speed slider path to snap immediately to the nearest supported fan preset instead of waiting for the fan's state echo.
-- This should make the slider feel more responsive while still reconciling against the real fan report afterward.
-
-**v1.1.18**
-- Added temporary speed-path diagnostics so logs show when HomeKit sends a slider speed request and when the fan first reports a speed back.
-- The diagnostic lines include the requested percentage, mapped device speed, write payload, and elapsed time to the first fan speed report.
-
-**v1.1.17**
-- Added a shared internal types module so platform config and accessory context stay in sync across the codebase.
-- Broke the remaining `platform.ts` / `platformAccessory.ts` circular dependency without changing runtime behavior.
-- Removed one confirmed dead-code path and tightened a few internal helper types for safer maintenance.
-
-**v1.1.16**
-- Removed the `homebridge` `peerDependencies` entry so npm no longer auto-installs Homebridge and `hap-nodejs` when the plugin is installed.
-- This matches the current Homebridge verification expectations while keeping the supported Homebridge range in `engines.homebridge`.
-
-**v1.1.15**
-- Added the explicit package `homepage` metadata required by the Homebridge verification checks.
-- Updated `config.schema.json` to use proper object-level `required` arrays and added the expected top-level platform `name` field.
-- Aligned the README examples with the Homebridge Settings UI by showing the top-level platform `name` in manual config examples.
-
-**v1.1.14**
-- Simplified the HomeKit fan-speed control path again by removing the recent auto-to-manual handoff, stale-speed suppression, and queued-write delay logic.
-- This intentionally moves the plugin back toward the simpler control behavior from earlier fork releases while keeping the unrelated parser, reconnect, and cache fixes.
-- Added regression coverage for the simplified direct speed-write path.
-
-**v1.1.13**
-- Added a short-lived expected-speed guard so a stale inbound fan update does not immediately overwrite a speed change that HomeKit just sent.
-- The guard automatically clears once the commanded speed is observed, so normal follow-up state updates continue flowing right away.
-- Added regression coverage for the stale-update suppression path.
-
-**v1.1.12**
-- Added a small per-fan outbound command queue so repeated HomeKit commands are serialized with a short gap instead of being blasted to the fan back-to-back.
-- This is intended to reduce command storms that can leave the accessory in a `No Response` state after several rapid HomeKit interactions.
-- Added regression coverage for queued client writes alongside the earlier auto-to-manual speed-control tests.
-
-**v1.1.11**
-- Adjusted the HomeKit manual speed-control path again so the plugin waits briefly after switching the fan out of Big Ass Fans auto mode before sending the requested manual speed.
-- This better mirrors the older “turn auto off, then change speed” flow and is intended to stop the speed slider from snapping back to the externally managed value.
-- Added regression coverage for the delayed auto-to-manual speed transition.
-
-**v1.1.10**
-- Fixed HomeKit fan speed changes while Big Ass Fans auto mode is active by explicitly switching the fan to manual mode before sending the requested speed.
-- This prevents the next state refresh from snapping the Home app slider back to the externally managed auto-mode speed.
-- Added regression coverage for the auto-to-manual speed-control transition.
-
-**v1.1.9**
-- Adjusted the auto-mode idle mapping so fans in Big Ass Fans auto mode at speed `0` are reported to HomeKit as inactive instead of active at `0%`.
-- This avoids the Home app control path that could leave the accessory in a `Not Responding` state after the earlier zero-speed sync changes.
-- `TargetFanState` still remains `Auto`, so the fan stays in automatic mode while HomeKit sees a safer inactive current state.
-
-**v1.1.8**
-- Reissued the zero-speed auto-mode state sync fix under a new npm version so the latest release can be published cleanly.
-- Fans in Big Ass Fans auto mode at speed `0` now report `RotationSpeed = 0%` in the Home app instead of leaving a stale nonzero percentage behind.
-- `Active` / `CurrentFanState` still show the correct idle-in-auto behavior, with the regression coverage carried forward.
-
-**v1.1.7**
-- Fixed auto-mode state reporting so fans that are in Big Ass Fans auto mode at speed `0` no longer leave a stale nonzero speed in the Home app.
-- HomeKit `RotationSpeed` now returns to `0%` when the fan reports zero speed, while `Active` / `CurrentFanState` still show the correct idle-in-auto behavior.
-- Added regression coverage for zero-speed rotation updates and percentage mapping.
-
-**v1.1.6**
-- Improved downlight auto-detection compatibility for fans that expose color-temperature control but underreport the primary downlight capability flag.
-- Downlight services now refresh correctly if capability information improves after the initial startup message.
-- Added regression coverage for downlight inference and override precedence.
-
-**v1.1.5**
-- Fixed fan-only and `noLights` setups so inbound fan state updates are no longer blocked waiting for a light target selector message that may never arrive.
-- External fan changes from the Big Ass Fans app now flow back into HomeKit correctly even when the accessory has no light services.
-- Added regression coverage for fan state dispatch when `targetBulb` is unknown.
-
-**v1.1.4**
-- External fan changes made in the Big Ass Fans app are now pulled back into HomeKit on the next probe cycle, even when the fan does not send an unsolicited state update.
-- HomeKit `Active` / `CurrentFanState` now stay in sync more reliably for external auto-mode transitions.
-- Added regression checks covering periodic state refresh and external auto-mode synchronization.
-
-**v1.1.3**
-- External fan changes made in the Big Ass Fans app now update HomeKit `Active` / `CurrentFanState` more reliably, including auto-mode transitions.
-- Added a regression check covering external auto-mode state synchronization.
-
-**v1.1.2**
-- Added startup capability summary logging so users can see which features each fan actually reports and which are exposed in HomeKit.
-- Added README guidance recommending a minimal config first, then adding overrides only when needed.
-
-**v1.1.1**
-- Added a lightweight regression harness for parser and reconnect edge cases.
-- Package metadata now reflects the current release series consistently.
-
-**v1.0.3**
-- Hardened protobuf parsing so malformed or truncated frames are safely dropped instead of risking a stuck parse loop.
-- The optional debug TCP port now listens on `127.0.0.1` only.
-- Fans removed from `config.fans` are automatically cleaned out of the Homebridge accessory cache.
-- The Homebridge UI now exposes the additional documented configuration options from this README.
-
----
-
-### Features
-
-- Turn fan and/or light(s) on or off
-- Change fan speed and direction (Big Ass Fans discourages reversing speed)
-- Ability to disable the fan direction control
-- Change brightness level of LED light
-- Adjust color temperature (i6 downlight)
-- Control UV-C light
-- Whoosh Mode (native SwingMode in the fan tile)
-- Fan Auto Mode (native TargetFanState in the fan tile)
-- Light Auto Mode (optional switch)
-- Dim to Warm (optional switch, i6 fans)
-- Eco Mode (optional switch, Haiku fans)
-- Expose occupancy (motion) sensors
-- Display temperature sensor (Haiku fans, i6 with remote)
-- Display humidity sensor (i6 with remote)
-- Night Light / Standby LED control (brightness, color)
-- Incremental brightness and speed buttons (optional)
-
-### Requirements
-
-- **Homebridge** 1.8.0 or newer (including Homebridge 2.0)
-- **Node.js** 20.15.1 or newer (20.x, 22.x, or 24.x)
-
-### Installation
-
-If you are not already running Homebridge, see the [Homebridge documentation](https://github.com/homebridge/homebridge#readme) to get started.
-
-#### Install from npm
+Install through the Homebridge UI, or install from npm:
 
 ```sh
 sudo npm install -g homebridge-bigassfans-2
 ```
 
-#### Install from this repo
+For a GitHub install:
 
 ```sh
 sudo npm install -g applemanj/homebridge-bigAssFans-2
 ```
 
-### Configuration
+## Configuration
 
-Add the `BigAssFans-i6` platform in `config.json` inside your Homebridge configuration directory.
+Add the `BigAssFans-i6` platform in your Homebridge `config.json`.
 
-> **Note:** The `platform` value remains `"BigAssFans-i6"` for compatibility.
+The `platform` value intentionally remains `"BigAssFans-i6"` for compatibility with the original plugin. The Homebridge Settings UI includes a custom admin page for this plugin and is the easiest way to configure fans, test connectivity, and review detected capabilities.
 
-The Homebridge Settings UI includes a custom admin screen for this plugin. It exposes the same documented settings below, keeps the required fan identity fields easy to scan, and shows config diagnostics for each fan. Saving through the UI preserves existing child-bridge metadata and other unknown keys while omitting optional settings that match plugin defaults.
-
-#### Minimal Example
+### Minimal Example
 
 ```json
 {
@@ -288,7 +78,7 @@ The Homebridge Settings UI includes a custom admin screen for this plugin. It ex
 }
 ```
 
-#### Multi-Fan Example
+### Multi-Fan Example
 
 ```json
 {
@@ -308,7 +98,6 @@ The Homebridge Settings UI includes a custom admin screen for this plugin. It ex
           "name": "Bedroom Haiku",
           "mac": "20:F8:5E:00:00:01",
           "ip": "192.168.1.151",
-          "showLightAutoSwitch": true,
           "showEcoModeSwitch": true
         }
       ]
@@ -317,9 +106,9 @@ The Homebridge Settings UI includes a custom admin screen for this plugin. It ex
 }
 ```
 
-#### Recommended Minimal Config
+### Recommended Approach
 
-Start with the smallest config that identifies each fan:
+Start with the required fields only:
 
 ```json
 {
@@ -335,91 +124,75 @@ Start with the smallest config that identifies each fan:
 }
 ```
 
-If you configure the plugin manually, include a top-level `"name"` alongside `"platform"` and `"fans"`. The Homebridge Settings UI also expects that field for platform plugins.
+Then let the plugin detect each fan's capabilities at startup. Add optional fields only when you want to expose extra HomeKit services or override detection.
 
-Then let the plugin detect the fan's capabilities at startup and only add override options if you actually need them, for example:
-- `noLights` if you want to hide all lighting services
-- `disableDirectionControl` if you want to hide reverse control
-- `showTemperature` or `showHumidity` if you want to override the default sensor exposure behavior
-- `downlightEquipped` / `uplightEquipped` only if auto-detection is wrong for your fan; omit these fields or set them to `"auto"` to use autodetection
+Common optional choices:
 
-### Configuration Fields
+- Use `noLights: true` to hide all light-related controls.
+- Use `disableDirectionControl: true` to hide the fan reverse/direction control.
+- Use `downlightEquipped` or `uplightEquipped` only when auto-detection is wrong.
+- Use `showTemperature` or `showHumidity` to control sensor exposure when the fan supports those sensors.
 
-#### Required Platform Fields
+## Configuration Fields
 
-| Field | Description |
-|-------|-------------|
-| `platform` | Must be `"BigAssFans-i6"` |
-| `name` | Display name for this Homebridge platform instance |
-| `fans` | Array of fan objects to expose |
+### Platform Fields
 
-#### Required Fan Fields
+| Field | Required | Description |
+|-------|----------|-------------|
+| `platform` | Yes | Must be `"BigAssFans-i6"`. |
+| `name` | Yes | Display name for this Homebridge platform instance. |
+| `fans` | Yes | Array of fan objects to expose. |
 
-| Field | Description |
-|-------|-------------|
-| `name` | Display name for the fan |
-| `ip` | IP address or hostname (mDNS `.local` names supported) |
-| `mac` | MAC address (found in the Big Ass Fans app under Wi-Fi settings) |
+### Fan Identity Fields
 
-#### Optional Switches
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name for the fan in HomeKit. |
+| `ip` | Yes | IP address, DNS hostname, or mDNS `.local` hostname. |
+| `mac` | Yes | Fan MAC address from the Big Ass Fans app Wi-Fi settings. |
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `showFanAutoSwitch` | `false` | Add a legacy separate switch for Fan Auto (also available natively in fan tile via TargetFanState) |
-| `showLightAutoSwitch` | `false` | Add a switch for Light Auto mode when the fan has lights |
-| `showDimToWarmSwitch` | `false` | Add a switch for Dim to Warm when supported by the fan |
-| `showEcoModeSwitch` | `false` | Add a switch for Eco Mode when supported by the fan |
-| `disableDirectionControl` | `false` | Hide the fan direction control |
-
-#### Advanced
+### Optional HomeKit Services
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `probeFrequency` | `60000` | Keep-alive and state-refresh interval in milliseconds (`0` disables periodic probing) |
-| `noLights` | `false` | Hide all light controls, including downlight, uplight, UVC, and standby LED controls |
-| `showHumidity` | `true` | Expose the humidity sensor when supported by the fan |
-| `showTemperature` | `true` | Expose the temperature sensor when supported by the fan |
-| `downlightEquipped` | `auto` | Downlight detection mode: omit the field or use `"auto"` for autodetection, `true` to force the downlight visible, or `false` to force it hidden |
-| `uplightEquipped` | `auto` | Uplight detection mode: omit the field or use `"auto"` for autodetection, `true` to force the uplight visible, or `false` to force it hidden |
-| `showFanOccupancySensor` | `false` | Expose fan occupancy sensor |
-| `showLightOccupancySensor` | `false` | Expose light occupancy sensor |
-| `showStandbyLED` | `false` | Expose night light / standby LED controls when supported by the fan |
-| `enableIncrementalButtons` | `false` | Add +/- buttons for brightness and fan speed |
-| `incrementalButtonsDelay` | `500` | Auto-reset delay for incremental buttons (ms) |
-| `enableDebugPort` | `false` | Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics |
+| `showFanAutoSwitch` | `false` | Adds a legacy separate Fan Auto switch. Fan Auto is also available natively in the fan tile. |
+| `showLightAutoSwitch` | `false` | Adds Light Auto when the fan has lights. |
+| `showDimToWarmSwitch` | `false` | Adds Dim to Warm when supported by the fan. |
+| `showEcoModeSwitch` | `false` | Adds Eco Mode when supported by the fan. |
+| `showHumidity` | `true` | Exposes humidity when supported by the fan. |
+| `showTemperature` | `true` | Exposes temperature when supported by the fan. |
+| `showFanOccupancySensor` | `false` | Exposes fan occupancy when supported by the fan. |
+| `showLightOccupancySensor` | `false` | Exposes light occupancy when supported by the fan. |
+| `showStandbyLED` | `false` | Exposes night light / standby LED controls when supported by the fan. Hidden if `noLights` is enabled. |
+| `enableIncrementalButtons` | `false` | Adds momentary +/- buttons for brightness and fan speed. |
 
-#### UI Diagnostics
+### Advanced Fields
 
-The custom Settings UI diagnostics panel summarizes each configured fan, required field readiness, state-refresh interval, light detection mode, exposed sensor choices, optional HomeKit services, and whether the localhost-only debug port is enabled. Use **Test Connection** on a single fan, or **Test All Fans** in the diagnostics panel, to run a live TCP check against each fan on port `31415`. The check sends the same non-mutating capability/state-refresh probes used during plugin startup and reports whether the fan connected or responded, latency, and bytes received.
+| Field | Default | Description |
+|-------|---------|-------------|
+| `probeFrequency` | `60000` | Keep-alive and state-refresh interval in milliseconds. Set to `0` to disable periodic probing. |
+| `noLights` | `false` | Hides all light-related services, including downlight, uplight, UVC, and standby LED controls. |
+| `disableDirectionControl` | `false` | Hides the fan direction/reverse control in HomeKit. |
+| `downlightEquipped` | `"auto"` | Downlight detection mode. Use `"auto"` or omit for detection, `true` to force visible, or `false` to force hidden. |
+| `uplightEquipped` | `"auto"` | Uplight detection mode. Use `"auto"` or omit for detection, `true` to force visible, or `false` to force hidden. |
+| `incrementalButtonsDelay` | `500` | Auto-reset delay for optional +/- buttons, in milliseconds. |
+| `enableDebugPort` | `false` | Enables a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics. Leave off for normal use. |
 
-When a fan includes a capability report in the diagnostic response, the UI also shows detected fan capabilities, which services those capabilities expose or hide with the current config, and guidance for options that are enabled in config but not reported by that fan.
+## Custom Settings UI
 
-If diagnostics find enabled options that the fan does not report, the card may show **Apply Suggested Settings**. This only applies conservative cleanup suggestions, such as hiding unsupported temperature, humidity, occupancy, standby LED, or Eco Mode options. It does not automatically enable optional services or undo intentional light-control overrides. After applying suggestions, the diagnostics card confirms what changed and the matching fan settings are briefly highlighted. Save settings and restart the child bridge afterward so HomeKit removes the hidden services.
+The custom Homebridge Settings UI provides:
 
-Runtime capability detection still happens when the plugin connects to each fan, so the Homebridge log remains the source of truth for actual detected hardware features.
+- A compact fan list focused on the fields most users need.
+- Per-fan **Test Connection** checks.
+- **Test All Fans** diagnostics.
+- Live capability summaries when the fan reports capability details.
+- Conservative suggested settings for options enabled in config but not reported by the fan.
 
-### Migrating from homebridge-i6-bigassfans
+Suggested settings only hide unsupported or inactive options. They do not automatically enable optional services or undo intentional light-control overrides. After applying suggestions, save settings and restart the child bridge so HomeKit can remove hidden services.
 
-1. **Uninstall the old plugin** and install this one.
-2. **Clear your Homebridge accessory cache** -- the switch from `Fan` to `Fanv2` service requires fresh accessories. (The plugin will attempt to remove the legacy `Fan` service automatically, but a cache clear ensures a clean state.)
-3. **Remove `showWhooshSwitch`** from your config -- Whoosh is now built into the fan tile as SwingMode.
-4. **`showFanAutoSwitch` is optional** -- Fan Auto is now built into the fan tile as TargetFanState. You can keep the legacy switch if you prefer a separate control.
-5. The `platform` value stays `"BigAssFans-i6"` -- no config change needed there.
+## Home App Terminology
 
-### Upgrading from the Original Plugin -- What Changes in HomeKit
-
-| Before (Fan service) | After (Fanv2 service) |
-|---|---|
-| On/Off toggle | Active (Inactive / Active) |
-| Separate Whoosh switch | SwingMode in fan tile |
-| Separate Fan Auto switch | TargetFanState (Manual / Auto) in fan tile |
-| No fan state feedback | CurrentFanState (Inactive / Idle / Blowing Air) |
-| Rotation Speed (%) | Rotation Speed (%) -- unchanged |
-| Rotation Direction | Rotation Direction -- unchanged |
-
-### Home App Terminology
-
-Because this plugin uses Apple's native `Fanv2` service, some labels in the Home app use Apple's generic fan wording instead of Big Ass Fans branding:
+Because this plugin uses Apple's native `Fanv2` service, the Home app uses Apple's generic fan labels:
 
 | Home App Label | Big Ass Fans Feature |
 |---|---|
@@ -429,47 +202,40 @@ Because this plugin uses Apple's native `Fanv2` service, some labels in the Home
 
 The behavior is mapped correctly; only the labels are Apple's.
 
-State changes made outside HomeKit, such as turning a fan on in the Big Ass Fans app, are also reflected back into HomeKit so the fan tile stays in sync. If the fan does not push that update on its own, the plugin will pick it up on the next probe/state-refresh cycle.
+## Migrating from homebridge-i6-bigAssFans
 
-### Troubleshooting
+1. Uninstall the old plugin and install `homebridge-bigassfans-2`.
+2. Keep `"platform": "BigAssFans-i6"` in your config.
+3. Remove `showWhooshSwitch`; Whoosh is now native `SwingMode` in the fan tile.
+4. Treat `showFanAutoSwitch` as optional; Fan Auto is now native `TargetFanState` in the fan tile.
+5. Clear the Homebridge accessory cache if HomeKit shows duplicate or stale services after migration.
 
-1. **Make sure you can control your fan from the official Big Ass Fans app** before troubleshooting the plugin.
+## Troubleshooting
 
-2. **Run Homebridge in debug mode** for additional diagnostics:
-   ```sh
-   homebridge -D
-   ```
+1. Confirm the fan works in the official Big Ass Fans app.
+2. Use the plugin Settings UI **Test Connection** or **Test All Fans** diagnostics.
+3. Check the Homebridge startup log for each fan's detected capability summary.
+4. If external app changes are slow to appear in HomeKit, lower `probeFrequency` from the default `60000` to a value such as `10000` or `15000`.
+5. If stale services remain after changing optional service settings, save settings, restart the child bridge, and clear the Homebridge accessory cache if needed.
+6. If HomeKit shows stale state, `No Response`, or ignores changes while plugin logs look healthy, reboot your Apple Home Hubs.
+7. Leave `enableDebugPort` off unless actively troubleshooting. When enabled, it listens on `127.0.0.1` only.
 
-3. **Check the startup capability summary** in the Homebridge logs. After each fan connects, the plugin logs which features were detected and which ones are being exposed or hidden by config. This is the easiest way to confirm whether your fan actually reports temperature, humidity, lights, occupancy, standby LED support, and similar capabilities.
+## Tips
 
-4. **If external app changes seem delayed in HomeKit, lower `probeFrequency`.** With the default `60000`, it can take up to about 60 seconds for a change made in the Big Ass Fans app to appear in HomeKit if the fan does not push an unsolicited update. A lower value such as `10000` or `15000` will refresh more quickly.
+- If Apple's Home app will not let you change the fan icon while grouped as one tile, switch to **Show as Separate Tiles**, change the icon, then switch back to **Show as Single Tile**.
+- If a fan has no light and no optional services, temporarily add `"showTemperature": false`, restart, change the icon, then remove that setting.
 
-5. **Clear the accessory cache** if you see duplicate or stale services after upgrading from the original plugin.
-
-6. **If HomeKit shows stale state, `No Response`, or ignores control changes while the plugin logs still look healthy, reboot your Home Hubs** (Apple TV / HomePod). In testing, hub-side issues can mimic plugin control failures even when the fan connection and state polling are working normally.
-
-7. **Check the [Issues](https://github.com/applemanj/homebridge-bigAssFans-2/issues)** for known problems and solutions.
-8. **If `enableDebugPort` is enabled**, connect from the Homebridge host itself. The debug port listens on `127.0.0.1` only, and you will usually want to turn it back off after debugging. Speed and on-off timing diagnostics are only logged when this option is enabled.
-
-### Tips
-
-- If you cannot change the fan icon in Apple's Home app and the fan is shown as a single tile, switch to **Show as Separate Tiles**, change the icon, then switch back to **Show as Single Tile**.
-- If the Home app does not show the option to separate tiles (e.g., a Haiku with no light and no optional switches), temporarily add `"showTemperature": false` to your config, restart, change the icon, then remove the setting.
-
-### Acknowledgments
+## Acknowledgments
 
 This fork builds on the work of [@oogje](https://github.com/oogje) and the contributors to [homebridge-i6-bigAssFans](https://github.com/oogje/homebridge-i6-bigAssFans).
 
 Special thanks to:
-- [@bdraco](https://github.com/bdraco) for identifying the protobuf protocol
-- [@jfroy](https://github.com/jfroy) for building a working BAF protobuf controller
-- [@pponce](https://github.com/pponce) for Haiku implementation, testing, and collaboration
-- [@knmorgan](https://github.com/knmorgan) for bug reports and code contributions
-- [@aveach](https://github.com/aveach) and all users who reported issues and helped debug
-- [homebridge-miot](https://github.com/merdok/homebridge-miot) -- style guide
-- [HAP-NodeJS](https://github.com/KhaosT/HAP-NodeJS) & [Homebridge](https://github.com/homebridge/homebridge) -- for making this possible
-- [Big Ass Fans](https://www.bigassfans.com) -- for their awesome products
 
-### License
+- [@bdraco](https://github.com/bdraco) for identifying the protobuf protocol.
+- [@jfroy](https://github.com/jfroy) for building a working BAF protobuf controller.
+- [@pponce](https://github.com/pponce), [@knmorgan](https://github.com/knmorgan), [@aveach](https://github.com/aveach), and the users who reported issues and helped debug.
+- [HAP-NodeJS](https://github.com/KhaosT/HAP-NodeJS), [Homebridge](https://github.com/homebridge/homebridge), and [Big Ass Fans](https://www.bigassfans.com).
+
+## License
 
 MIT

@@ -1,5 +1,15 @@
 ## Release Notes
 
+### v1.1.39
+
+**Admin UI Header and README Polish**
+- Removed the large plugin/platform settings panel from the normal admin UI flow.
+- Moved Save Settings and configuration status into the admin UI header.
+- Increased status badge contrast for better readability in Homebridge dark mode.
+- Tightened the README for public npm/GitHub presentation and moved detailed release history to this file.
+
+---
+
 ### v1.1.38
 
 **Admin UI Readability and Service Cleanup Persistence**
