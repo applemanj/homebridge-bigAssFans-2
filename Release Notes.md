@@ -1,5 +1,12 @@
 ## Release Notes
 
+### v1.1.40
+
+**Package Metadata**
+- Added explicit package author metadata so npm identifies Joshua Appleman as the package author while keeping trusted GitHub Actions publishing intact.
+
+---
+
 ### v1.1.39
 
 **Admin UI Header and README Polish**
