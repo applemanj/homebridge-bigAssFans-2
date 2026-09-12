@@ -34,7 +34,7 @@ See [Release Notes.md](https://github.com/applemanj/homebridge-bigAssFans-2/blob
 ## Requirements
 
 - Homebridge 1.8.0 or newer, including Homebridge 2.0.
-- Node.js 20.15.1 or newer. Node 20, 22, and 24 are tested in CI.
+- Node.js 20.15.1 or newer. Node 20, 22, 24, and 26 are tested in CI.
 - A supported Big Ass Fans / Haiku fan on the same network as Homebridge.
 - The fan's IP address or hostname and MAC address from the Big Ass Fans app Wi-Fi settings.
 

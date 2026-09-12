@@ -1,5 +1,16 @@
 ## Release Notes
 
+### v1.1.41
+
+**Node 26 Support**
+
+- Declared Node 26 support in `engines.node` (`^20.15.1 || ^22 || ^24 || ^26`). Homebridge Config UI X flagged the plugin as incompatible with Node v26.8.2 because the previous range stopped at `^24.0.0`.
+- Confirmed the plugin builds and passes its regression suite on Node 26.8.2. No Node 26 incompatibilities were found, so the warning came from the stale version declaration rather than the plugin code.
+- Added Node 26 to the CI build matrix.
+- Updated the README requirements to list Node 20, 22, 24, and 26.
+
+---
+
 ### v1.1.40
 
 **Package Metadata**
