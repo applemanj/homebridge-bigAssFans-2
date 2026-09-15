@@ -1,5 +1,15 @@
 ## Release Notes
 
+### v1.1.42
+
+**Package Manifest Alignment**
+
+- Standardized `engines.homebridge` to `>=1.8.0 <3.0.0-0`. The previous range (`^1.8.0 || ^2.0.0-beta.0 || ^2.0.0`) did not satisfy Homebridge prerelease versions under npm's default resolution semantics.
+- The plugin declares no `peerDependencies.homebridge`, so this was a manifest-consistency change rather than a fix for a reported install failure.
+- No functional, behavioral, or configuration changes. Fan control, HomeKit services, and the admin UI are unchanged.
+
+---
+
 ### v1.1.41
 
 **Node 26 Support**
