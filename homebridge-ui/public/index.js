@@ -305,8 +305,7 @@ function createFanCard(fan, index) {
 
   const modeControl = createModeSelect(index, getValue(fan, "dualLightModeControl"));
   const visibleCapabilityFields = [
-    ...(lightsHidden ? [] : [modeControl]),
-    ...(lightsHidden ? [] : [downlightDetection, uplightDetection]),
+    ...(lightsHidden ? [] : [downlightDetection, uplightDetection, modeControl]),
     ...(incrementalButtonsEnabled ? [incrementalButtonDelay] : []),
   ];
 

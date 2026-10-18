@@ -154,6 +154,17 @@
                 }
               ]
             },
+            "dualLightModeControl": {
+              "title": "Dual-light mode controls",
+              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off.",
+              "type": "string",
+              "enum": [
+                "exclusive",
+                "channels",
+                "both-up"
+              ],
+              "default": "exclusive"
+            },
             "showFanOccupancySensor": {
               "title": "Show Fan Occupancy Sensor",
               "description": "Expose the fan occupancy sensor when supported by the fan.",
@@ -190,17 +201,6 @@
               "description": "Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics. Leave off for normal use.",
               "type": "boolean",
               "default": false
-            },
-            "dualLightModeControl": {
-              "title": "Dual-light mode controls",
-              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off.",
-              "type": "string",
-              "enum": [
-                "exclusive",
-                "channels",
-                "both-up"
-              ],
-              "default": "exclusive"
             },
             "showWhooshSwitch": {
               "title": "Whoosh switch",
