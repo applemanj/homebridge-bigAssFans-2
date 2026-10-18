@@ -3,7 +3,9 @@
 import type { LightTile } from './accessoryLayout';
 import * as net from 'net';
 import type { Service, PlatformAccessory, CharacteristicValue, WithUUID } from 'homebridge';
-import { DualLightCoordinator, lightCommand, normalizeDualLightModeControl, type DualLightModeControl, type WhiteLightState } from './lighting';
+import {
+  DualLightCoordinator, lightCommand, normalizeDualLightModeControl, type DualLightModeControl, type WhiteLightState,
+} from './lighting';
 import { emptyNightLightState, NightLightCoordinator, nightLightColor, nightLightCommand, type NightLightState } from './nightlight';
 import type { BigAssFansAccessoryContext, BigAssFansPlatformContext, LightDetectionOverride } from './types';
 import {
