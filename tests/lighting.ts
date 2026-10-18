@@ -158,6 +158,50 @@ async function main() {
   failure.light.disconnect();
   await cancelled;
 
+  // Partial feedback must not replay cached properties over a pending request.
+  const partial = harness();
+  partial.light.report({ selection: 2, power: 1, brightness: 75 });
+  const both = partial.light.setChannel(1, true);
+  partial.light.flush();
+  await both;
+  partial.light.report({ power: 1 });
+  assert.equal(partial.light.channelOn(1), true, 'Power-only feedback must not restore cached Up mode');
+  assert.equal(partial.light.view.brightness, 25, 'Power-only feedback must not restore cached Up brightness');
+  partial.light.report({ selection: 0 });
+  assert.equal(partial.light.view.brightness, 25);
+  partial.light.report({ brightness: 25 });
+  assert.deepEqual(partial.light.memory, { down: 25, up: 75 });
+  const dim = partial.light.setBrightness(60);
+  partial.light.flush();
+  await dim;
+  partial.light.report({ kelvin: 3000 });
+  partial.light.report({ power: 1 });
+  assert.equal(partial.light.view.brightness, 60, 'Unrelated reports must not undo a brightness write');
+  partial.light.report({ brightness: 60 });
+  assert.equal(partial.light.memory.down, 60);
+  partial.light.disconnect();
+
+  // All property orders must converge without another query or corrupted memory.
+  for (const fields of [
+    ['selection', 'brightness', 'power'], ['selection', 'power', 'brightness'],
+    ['brightness', 'selection', 'power'], ['brightness', 'power', 'selection'],
+    ['power', 'selection', 'brightness'], ['power', 'brightness', 'selection'],
+  ]) {
+    const ordered = harness();
+    ordered.light.report({ selection: 2, power: 1, brightness: 75 });
+    const request = ordered.light.setChannel(1, true);
+    ordered.light.flush();
+    await request;
+    const response = { selection: 0, brightness: 25, power: 1 };
+    for (const field of fields) {
+      ordered.light.report({ [field]: response[field as keyof typeof response] });
+      assert.equal(ordered.light.channelOn(1), true);
+      assert.equal(ordered.light.view.brightness, 25);
+    }
+    assert.deepEqual(ordered.light.persistedMemory, { down: 25, up: 75 });
+    ordered.light.disconnect();
+  }
+
   // The device report wins even during an outstanding HomeKit command.
   // There is no source/revision marker that can distinguish a BAF app change from an echo.
   const stale = harness();
@@ -257,6 +301,19 @@ async function main() {
     assert.equal(feedback.warnings.length, 0, 'A different reported value is not a feedback timeout');
     assert.equal(feedback.commands.length, 1);
     feedback.light.disconnect();
+
+    const missing = harness();
+    missing.light.report({ selection: 2, power: 1, brightness: 75 });
+    const pendingMode = missing.light.setChannel(1, true);
+    missing.light.flush();
+    await pendingMode;
+    missing.light.report({ power: 1 });
+    assert.equal(missing.light.channelOn(1), true);
+    mock.timers.tick(2600);
+    assert.equal(missing.light.channelOn(1), false, 'Missing feedback eventually restores actual cached state');
+    assert.equal(missing.warnings.length, 1);
+    assert.equal(missing.commands.length, 1, 'Missing feedback does not retry commands');
+    missing.light.disconnect();
 
     // Sliding continuously coalesces queries; lack of feedback never retries a write.
     const burst = harness();

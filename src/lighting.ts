@@ -28,6 +28,7 @@ export class DualLightCoordinator {
   private expected?: WhiteLightState;
   private awaiting = new Set<keyof WhiteLightState>();
   private memoryBeforeWrite?: LightMemory;
+  private brightnessReportedDuringModeChange = false;
   private pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
   private debounce?: ReturnType<typeof setTimeout>;
   private confirmation?: ReturnType<typeof setTimeout>;
@@ -193,6 +194,9 @@ export class DualLightCoordinator {
         this.remember();
         this.expected = next;
         const keys: Record<number, keyof WhiteLightState> = { 82: 'selection', 69: 'brightness', 71: 'kelvin', 68: 'power' };
+        if (commands.some(command => command.field === 82)) {
+          this.brightnessReportedDuringModeChange = false;
+        }
         commands.forEach(command => this.awaiting.add(keys[command.field]));
         clearTimeout(this.confirmation);
         this.confirmation = setTimeout(() => {
@@ -237,12 +241,17 @@ export class DualLightCoordinator {
       this.finishSlider();
     }
     if (update.selection !== undefined && update.selection !== this.reported.selection && update.brightness === undefined) {
-      delete this.reported.brightness;
+      if (!this.awaiting.has('selection') || !this.brightnessReportedDuringModeChange) {
+        delete this.reported.brightness;
+      }
       // Selection is independently authoritative; do not leave switches stale
       // while waiting for the selected mode's brightness in another frame.
       this.state.selection = update.selection;
       this.changed();
       this.scheduleRefresh();
+    }
+    if (this.awaiting.has('selection') && update.brightness !== undefined) {
+      this.brightnessReportedDuringModeChange = true;
     }
     this.reported = { ...this.reported, ...update };
     Object.keys(update).forEach(key => this.awaiting.delete(key as keyof WhiteLightState));
@@ -255,9 +264,9 @@ export class DualLightCoordinator {
     // value may be a BAF app/remote/Matter change or firmware rounding, so it
     // must update HomeKit immediately, even while another write awaits feedback.
     // Discard speculative memory before remembering the actual reported mode.
-    this.memory = this.memoryBeforeWrite ?? this.memory;
-    this.memoryBeforeWrite = undefined;
     if (this.awaiting.size === 0) {
+      this.memory = this.memoryBeforeWrite ?? this.memory;
+      this.memoryBeforeWrite = undefined;
       clearTimeout(this.confirmation);
       clearTimeout(this.refreshTimer);
       this.expected = undefined;
@@ -271,13 +280,21 @@ export class DualLightCoordinator {
       this.changed();
       return;
     }
-    this.state = { ...this.state, ...this.reported };
+    const current = { ...this.reported };
+    // A partial report only confirms the properties it contains. Cached values
+    // for other outstanding writes are not fresh feedback and must not roll
+    // their optimistic state back. Explicit differing reports still win.
+    for (const key of this.awaiting) {
+      delete current[key];
+    }
+    this.state = { ...this.state, ...current };
     this.remember();
     this.changed();
   }
 
   private remember() {
-    if (this.expected?.power === 0 && this.awaiting.has('power')) {
+    if (this.awaiting.has('selection') || this.awaiting.has('brightness') ||
+        (this.expected?.power === 0 && this.awaiting.has('power'))) {
       return;
     }
     const key = this.state.selection === 2 ? 'up' : 'down';

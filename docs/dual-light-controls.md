@@ -96,3 +96,13 @@ Dual-light fans expose the following accessories through the same Homebridge bri
 All tiles share one fan connection and lighting coordinator. Mode selection, brightness memory, BAF app feedback, and standby behavior are unchanged. Apple Home controls the visual presentation of each accessory; the mode accessory can be shown together without grouping it with the fan or lights.
 
 This migration retains the original fan identity and stored brightness memory. The lights and mode controls gain separate accessory identities, so their room assignment, names, favorites, and scene/automation references may need updating in Apple Home. Do not delete or re-pair the bridge. Single-light fans retain their existing accessory layout. Disabling a light feature removes its separate accessory; removing a fan removes all its child accessories.
+
+### Partial feedback during changes
+
+A power-only or color-temperature-only report must not replay cached mode or
+brightness values over a pending HomeKit change. Pending properties retain their
+requested values until those properties are actually reported, or the existing
+2.5-second feedback timeout restores the last reported state. Explicit differing
+values still take effect immediately, including changes from the BAF app; the
+plugin does not retry writes to fight them. Mode and brightness feedback can
+arrive in either order without discarding a freshly reported brightness.
