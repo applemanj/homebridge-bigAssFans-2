@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import * as net from 'net';
 
-import { __test__ } from '../src/platformAccessory';
+import { __test__, BigAssFans_i6PlatformAccessory } from '../src/platformAccessory';
 import { parseCapabilitiesFromSlipData, suggestCapabilityConfig, summarizeCapabilityExposure } from '../src/protocol';
 
 class FakeSocket extends EventEmitter {
@@ -161,6 +161,19 @@ function createTestAccessoryState() {
         RotationDirection: 1,
         homeShieldUp: false,
       },
+      downlightStates: {
+        On: false,
+        Brightness: 0,
+        ColorTemperature: 0,
+        homeShieldUp: false,
+      },
+      uplightStates: {
+        On: false,
+        Brightness: 0,
+        ColorTemperature: 0,
+        homeShieldUp: false,
+      },
+      bothlightsBulbService: undefined as never,
       debugLevels: {
         characteristics: 0,
         newcode: 0,
@@ -245,7 +258,23 @@ function createTestServiceState() {
       showHumidity: true,
       showEcoModeSwitch: true,
       showStandbyLED: false,
+      bothlightsControl: false,
+      bothlightsBulbService: undefined as never,
       enableIncrementalButtons: false,
+      bulbCount: 0,
+      targetBulb: -1,
+      downlightStates: {
+        On: false,
+        Brightness: 0,
+        ColorTemperature: 0,
+        homeShieldUp: false,
+      },
+      uplightStates: {
+        On: false,
+        Brightness: 0,
+        ColorTemperature: 0,
+        homeShieldUp: false,
+      },
       capabilities: {
         hasTempSensor: false,
         hasHumiditySensor: false,
@@ -285,6 +314,8 @@ function createTestServiceState() {
           SerialNumber: 'SerialNumber',
           Name: 'Name',
           ConfiguredName: 'ConfiguredName',
+          On: 'On',
+          Brightness: 'Brightness',
         },
         log: {
           warn: (message: string) => logs.push(message),
@@ -857,6 +888,124 @@ async function testProbeRequestsStateRefresh() {
   }
 }
 
+function withLightHandlerMethods(state: Record<string, unknown>) {
+  Object.assign(state, {
+    setDownLightOnState: BigAssFans_i6PlatformAccessory.prototype.setDownLightOnState,
+    getDownLightOnState: BigAssFans_i6PlatformAccessory.prototype.getDownLightOnState,
+    setDownBrightness: BigAssFans_i6PlatformAccessory.prototype.setDownBrightness,
+    getDownBrightness: BigAssFans_i6PlatformAccessory.prototype.getDownBrightness,
+    setDownColorTemperature: BigAssFans_i6PlatformAccessory.prototype.setDownColorTemperature,
+    getDownColorTemperature: BigAssFans_i6PlatformAccessory.prototype.getDownColorTemperature,
+    setUpLightOnState: BigAssFans_i6PlatformAccessory.prototype.setUpLightOnState,
+    getUpLightOnState: BigAssFans_i6PlatformAccessory.prototype.getUpLightOnState,
+    setUpBrightness: BigAssFans_i6PlatformAccessory.prototype.setUpBrightness,
+    getUpBrightness: BigAssFans_i6PlatformAccessory.prototype.getUpBrightness,
+    setBothLightsOnState: BigAssFans_i6PlatformAccessory.prototype.setBothLightsOnState,
+    getBothLightsOnState: BigAssFans_i6PlatformAccessory.prototype.getBothLightsOnState,
+    setBothBrightness: BigAssFans_i6PlatformAccessory.prototype.setBothBrightness,
+    getBothBrightness: BigAssFans_i6PlatformAccessory.prototype.getBothBrightness,
+  });
+}
+
+function testBothlightsServiceCreatedWhenEnabled() {
+  const { accessory, state } = createTestServiceState();
+  withLightHandlerMethods(state);
+  state.bothlightsControl = true;
+  state.capabilities.hasLight = true;
+  state.capabilities.hasUplight = true;
+
+  __test__.makeServices(state as never);
+
+  assert.equal(accessory.hasService('light-4'), true);
+}
+
+function testBothlightsServiceNotCreatedWithoutUplight() {
+  const { accessory, state } = createTestServiceState();
+  withLightHandlerMethods(state);
+  state.bothlightsControl = true;
+  state.capabilities.hasLight = true;
+  state.capabilities.hasUplight = false;
+
+  __test__.makeServices(state as never);
+
+  assert.equal(accessory.hasService('light-4'), false);
+}
+
+function testBothlightsServiceRemovedWhenDisabled() {
+  const { accessory, state } = createTestServiceState();
+  withLightHandlerMethods(state);
+  state.bothlightsControl = false;
+  state.capabilities.hasLight = true;
+  state.capabilities.hasUplight = true;
+  accessory.addService('Lightbulb', 'Test Fan Both Lights', 'light-4');
+
+  __test__.makeServices(state as never);
+
+  assert.equal(accessory.hasService('light-4'), false);
+}
+
+async function testBothlightsOnWritesTargetBothFirst() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.bulbCount = 2;
+  state.downlightStates = { On: false, Brightness: 0, ColorTemperature: 0, homeShieldUp: false };
+  state.uplightStates = { On: false, Brightness: 0, ColorTemperature: 0, homeShieldUp: false };
+
+  await __test__.invokeSetBothLightsOnState(state as never, true);
+
+  // first write targets BOTH (0x90 0x05 0x00), second is the on command
+  assert.equal(socket.writes.length, 2);
+  const targetWrite = Array.from(socket.writes[0]);
+  assert.deepEqual(targetWrite.slice(7, 10), [0x90, 0x05, 0x00]);
+  const onWrite = Array.from(socket.writes[1]);
+  assert.deepEqual(onWrite.slice(7, 10), [0xa0, 0x04, 0x01]);
+  assert.equal(state.downlightStates.On, true);
+  assert.equal(state.uplightStates.On, true);
+}
+
+async function testBothlightsBrightnessWritesTargetBothFirst() {
+  const { state } = createTestAccessoryState();
+  const socket = new FakeSocket();
+  state.client = socket;
+  state.bulbCount = 2;
+  state.downlightStates = { On: true, Brightness: 10, ColorTemperature: 0, homeShieldUp: false };
+  state.uplightStates = { On: true, Brightness: 10, ColorTemperature: 0, homeShieldUp: false };
+
+  await __test__.invokeSetBothBrightness(state as never, 50);
+
+  assert.equal(socket.writes.length, 2);
+  const targetWrite = Array.from(socket.writes[0]);
+  assert.deepEqual(targetWrite.slice(7, 10), [0x90, 0x05, 0x00]);
+  const brightnessWrite = Array.from(socket.writes[1]);
+  assert.deepEqual(brightnessWrite.slice(7, 10), [0xa8, 0x04, 50]);
+  assert.equal(state.downlightStates.Brightness, 50);
+  assert.equal(state.uplightStates.Brightness, 50);
+}
+
+function testBothlightsServiceSyncsFromFanUpdates() {
+  const { state } = createTestServiceState();
+  const updates: Array<{ characteristic: string; value: boolean | number }> = [];
+  state.bothlightsBulbService = {
+    updateCharacteristic(characteristic: string, value: boolean | number) {
+      updates.push({ characteristic, value });
+    },
+  } as never;
+  state.bulbCount = 2;
+  state.targetBulb = 0; // TARGETLIGHT_BOTH
+  state.downlightStates.On = true;
+  state.downlightStates.Brightness = 40;
+  state.uplightStates.On = false;
+  state.uplightStates.Brightness = 0;
+
+  __test__.syncBothlightsService(state as never);
+
+  assert.deepEqual(updates, [
+    { characteristic: 'On', value: true },
+    { characteristic: 'Brightness', value: 40 },
+  ]);
+}
+
 async function main() {
   testGetVarintSupportsLargeValues();
   testStandbyLEDColorMessageUsesVarints();
@@ -882,6 +1031,12 @@ async function main() {
   testCapabilityParserExtractsLiveCapabilities();
   testCapabilitySuggestionsOnlyHideUnsupportedOptions();
   testUnsupportedCapabilityServicesAreRemovedFromCache();
+  testBothlightsServiceCreatedWhenEnabled();
+  testBothlightsServiceNotCreatedWithoutUplight();
+  testBothlightsServiceRemovedWhenDisabled();
+  await testBothlightsOnWritesTargetBothFirst();
+  await testBothlightsBrightnessWritesTargetBothFirst();
+  testBothlightsServiceSyncsFromFanUpdates();
   await testReconnectOnClose();
   await testProbeRequestsStateRefresh();
   console.log('Regression tests passed.');

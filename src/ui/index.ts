@@ -1,4 +1,5 @@
 import * as net from 'net';
+import { Bonjour } from 'bonjour-service';
 import {
   applyCapabilityConfig,
   parseCapabilitiesFromSlipData,
@@ -126,16 +127,75 @@ function validateFan(fan: NormalizedFanConfig): string | undefined {
   if (!fan.name) {
     return 'Fan name is required.';
   }
-  if (!fan.ip) {
-    return 'Fan IP address or hostname is required.';
-  }
   if (!/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(fan.mac)) {
     return 'Fan MAC address must use the format 20:F8:5E:00:00:00.';
   }
   return undefined;
 }
 
-function testFanConnection(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
+/**
+ * Resolves a fan ip via mDNS by matching the TXT record mac (case-insensitive)
+ * against the configured mac. Returns undefined when no match is found.
+ */
+function resolveFanIpViaMdns(mac: string, timeoutMs = 5000): Promise<string | undefined> {
+  const bonjour = new Bonjour();
+  const browser = bonjour.find({ type: 'http' });
+  const wanted = mac.toLowerCase();
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      browser.stop();
+      bonjour.destroy();
+      resolve(undefined);
+    }, timeoutMs);
+
+    browser.on('up', (service: { txt?: Record<string, string>; addresses?: string[] }) => {
+      if (service.txt?.mac?.toLowerCase() !== wanted) {
+        return;
+      }
+
+      const address = service.addresses?.find((addr) => addr.includes('.')) ?? service.addresses?.[0];
+      if (!address) {
+        return;
+      }
+
+      clearTimeout(timeout);
+      browser.stop();
+      bonjour.destroy();
+      resolve(address);
+    });
+  });
+}
+
+async function testFanConnection(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
+  const validationError = validateFan(fan);
+  if (validationError) {
+    return {
+      ok: false,
+      state: 'missing-config',
+      message: validationError,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  if (!fan.ip) {
+    const discoveredIp = await resolveFanIpViaMdns(fan.mac);
+    if (!discoveredIp) {
+      return {
+        ok: false,
+        state: 'missing-config',
+        message: 'No ip is configured and mDNS discovery could not find a fan with that MAC address. ' +
+          'Check that the fan is powered on and on the same network, or set its ip manually.',
+        checkedAt: new Date().toISOString(),
+      };
+    }
+    fan = { ...fan, ip: discoveredIp };
+  }
+
+  return testFanConnectionWithIp(fan, timeoutMs);
+}
+
+function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
   const validationError = validateFan(fan);
   if (validationError) {
     return Promise.resolve({

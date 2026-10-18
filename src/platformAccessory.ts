@@ -69,6 +69,7 @@ export class BigAssFans_i6PlatformAccessory {
   public lightOccupancySensorService!: Service;
   public standbyLEDEnabledSwitchService!: Service;
   public standbyLEDBulbService!: Service;
+  public bothlightsBulbService!: Service;
   public downlightDarkenService!: Service;
   public downlightLightenService!: Service;
   public fanSlowerService!: Service;
@@ -125,6 +126,7 @@ export class BigAssFans_i6PlatformAccessory {
   public showLightOccupancySensor = false;
   public showStandbyLED = false;
   public standbyLEDEnabledSwitchOn = false;
+  public bothlightsControl = false;
 
   public downlightEquipped: boolean | undefined = undefined;
   public uplightEquipped: boolean | undefined = undefined;
@@ -199,7 +201,7 @@ export class BigAssFans_i6PlatformAccessory {
     public readonly accessory: PlatformAccessory<BigAssFansAccessoryContext>,
   ) {
     const device = accessory.context.device;
-    this.IP = device.ip;
+    this.IP = device.ip ?? '';
     this.MAC = device.mac;
     this.Name = device.name;
 
@@ -314,6 +316,10 @@ export class BigAssFans_i6PlatformAccessory {
 
     if (device.showStandbyLED) {
       this.showStandbyLED = true;
+    }
+
+    if (device.bothlightsControl) {
+      this.bothlightsControl = true;
     }
 
     if (device.enableDebugPort) {
@@ -460,6 +466,64 @@ export class BigAssFans_i6PlatformAccessory {
   async getUpBrightness(): Promise<CharacteristicValue> {
     const brightness = (this.uplightStates.Brightness === 0 ? 1 : this.uplightStates.Brightness);
     debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Up Brightness -> ' + brightness);
+    return brightness;
+  }
+
+  async setBothLightsOnState(value: CharacteristicValue) {
+    debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Lights On -> ' + value);
+
+    // per upstream issue #30 beta6: explicitly target BOTH before the command,
+    // otherwise the fan applies it to whichever bulb was last selected
+    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
+
+    this.downlightStates.On = value as boolean;
+    this.uplightStates.On = value as boolean;
+    clientWrite(this.client, ONEBYTEHEADER.concat([0xa0, 0x04, (value ? 0x01 : 0x00)]), this);
+  }
+
+  async getBothLightsOnState(): Promise<CharacteristicValue> {
+    const isOn = this.downlightStates.On || this.uplightStates.On;
+    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Lights On -> ' + isOn);
+    return isOn;
+  }
+
+  async setBothBrightness(value: CharacteristicValue) {
+    let b: number[];
+
+    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
+
+    if (value === 0) {
+      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
+      this.downlightStates.homeShieldUp = true;
+      this.uplightStates.homeShieldUp = true;
+      this.downlightStates.Brightness = 0;
+      this.uplightStates.Brightness = 0;
+      const b1 = ONEBYTEHEADER.concat([0xa8, 0x04, 1]); // this one is for the device's memory
+      const b2 = ONEBYTEHEADER.concat([0xa8, 0x04, 0]); // this one is actually turn off light
+      b = b1.concat(b2);
+    } else if (value === 100 && (this.downlightStates.homeShieldUp || this.uplightStates.homeShieldUp)) {
+      this.downlightStates.homeShieldUp = false;
+      this.uplightStates.homeShieldUp = false;
+      this.downlightStates.Brightness = 1;
+      this.uplightStates.Brightness = 1;
+      b = ONEBYTEHEADER.concat([0xa8, 0x04, 1]);
+    } else {
+      this.downlightStates.homeShieldUp = false;
+      this.uplightStates.homeShieldUp = false;
+      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
+      this.downlightStates.Brightness = value as number;
+      this.uplightStates.Brightness = value as number;
+      b = ONEBYTEHEADER.concat([0xa8, 0x04, this.downlightStates.Brightness]);
+    }
+    clientWrite(this.client, b, this);
+  }
+
+  async getBothBrightness(): Promise<CharacteristicValue> {
+    const brightness = Math.max(
+      this.downlightStates.Brightness === 0 ? 1 : this.downlightStates.Brightness,
+      this.uplightStates.Brightness === 0 ? 1 : this.uplightStates.Brightness,
+    );
+    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Brightness -> ' + brightness);
     return brightness;
   }
 
@@ -1148,6 +1212,23 @@ function makeServices(pA: BAF) {
     zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
   }
 
+  // both lights (downlight + uplight together) - only meaningful on fans with two light services
+  if (pA.bulbCount === 2 && pA.bothlightsControl) {
+    pA.bothlightsBulbService = pA.accessory.getService('bothlights') ||
+      pA.accessory.addService(pA.platform.Service.Lightbulb, 'bothlights', 'light-4');
+    setName(pA, pA.bothlightsBulbService, pA.Name + (capitalizeName ? ' Both Lights' : ' both lights'));
+
+    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.On)
+      .onSet(pA.setBothLightsOnState.bind(pA))
+      .onGet(pA.getBothLightsOnState.bind(pA));
+
+    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.Brightness)
+      .onSet(pA.setBothBrightness.bind(pA))
+      .onGet(pA.getBothBrightness.bind(pA));
+  } else {
+    zapService(pA, 'bothlights', ['light-4'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-4' }]);
+  }
+
   if (pA.capabilities.hasUVCLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} UVC light disabled by configuration '"noLights": true'`);
@@ -1768,6 +1849,22 @@ function lightBrightness(s: string, pA:BAF) {
       targetedlightBrightness(value, pA.downlightBulbService, pA.downlightStates, 'Down', pA);
       break;
   }
+
+  syncBothlightsService(pA);
+}
+function syncBothlightsService(pA:BAF) {
+  if (pA.bothlightsBulbService === undefined) {
+    return;
+  }
+
+  const isOn = pA.downlightStates.On || pA.uplightStates.On;
+  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.On, isOn);
+
+  const brightness = Math.max(
+    pA.downlightStates.Brightness === 0 ? 1 : pA.downlightStates.Brightness,
+    pA.uplightStates.Brightness === 0 ? 1 : pA.uplightStates.Brightness,
+  );
+  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.Brightness, brightness);
 }
 function targetedlightBrightness(value:number, lightBulbService:Service, states:lightStates, description:string, pA:BAF) {
   if (lightBulbService === undefined) {
@@ -1827,6 +1924,8 @@ function lightOnState(s: string, pA:BAF) {
         break;
     }
   }
+
+  syncBothlightsService(pA);
 }
 function targetedlightOnState(value:number, service:Service, states:lightStates, description:string, pA:BAF) {
   debugLog(pA, 'light', 1, `${description} lightOnState value: ` + value);
@@ -3678,10 +3777,23 @@ export const __test__ = {
       value,
     );
   },
+  async invokeSetBothLightsOnState(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
+    return BigAssFans_i6PlatformAccessory.prototype.setBothLightsOnState.call(
+      pA as BigAssFans_i6PlatformAccessory,
+      value,
+    );
+  },
+  async invokeSetBothBrightness(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
+    return BigAssFans_i6PlatformAccessory.prototype.setBothBrightness.call(
+      pA as BigAssFans_i6PlatformAccessory,
+      value,
+    );
+  },
   networkSetup,
   normalizeLightDetectionOverride,
   makeServices,
   onData,
+  syncBothlightsService,
   percentToRotationSpeed,
   reconcileCapabilities,
   rotationSpeedPercent,

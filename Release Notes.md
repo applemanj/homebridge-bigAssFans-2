@@ -1,5 +1,18 @@
 ## Release Notes
 
+### v1.2.0
+
+**Both Lights Control, mDNS Discovery, and Documentation**
+
+- Added `bothlightsControl`: an optional single light service that turns the downlight and uplight on together and sets both to the same brightness. Applies only to fans with both a downlight and an uplight (upstream issues #30 and #34 context).
+- Added automatic mDNS discovery: the fan `ip` is now optional. When left blank, the plugin browses `_http._tcp` at startup, matches the advertised TXT `mac` record against the configured MAC address, and connects to the discovered address (upstream issue #6).
+- The custom UI Test Connection now resolves fans via mDNS when no ip is configured, so blank-ip fans can be tested before saving.
+- Documented the firmware 3.0+ requirement with a pointer to the older `homebridge-bigAssFans` plugin for pre-3.0 fans (upstream issue #36).
+- Added a Siri fan-speed tip: each of the fan's seven speeds maps to roughly 14%, so asking for a multiple of 14 lands on an exact speed (upstream issue #37).
+- Added `bonjour-service` as the plugin's first additional runtime dependency for mDNS support.
+
+---
+
 ### v1.1.42
 
 **Package Manifest Alignment**

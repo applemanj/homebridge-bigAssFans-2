@@ -5,7 +5,7 @@ export type LightDetectionOverride = boolean | 'auto';
 
 export interface BigAssFansDeviceConfig {
   name: string;
-  ip: string;
+  ip?: string;
   mac: string;
   debugLevels?: DebugLevelConfigEntry[];
   noLights?: boolean;
@@ -28,6 +28,7 @@ export interface BigAssFansDeviceConfig {
   showFanOccupancySensor?: boolean;
   showLightOccupancySensor?: boolean;
   showStandbyLED?: boolean;
+  bothlightsControl?: boolean;
   enableDebugPort?: boolean;
   showTemperature?: boolean;
   showHumidity?: boolean;

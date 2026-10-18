@@ -43,6 +43,7 @@ const fanDefaults = {
   showFanOccupancySensor: false,
   showLightOccupancySensor: false,
   showStandbyLED: false,
+  bothlightsControl: false,
   enableIncrementalButtons: false,
   incrementalButtonsDelay: 500,
   enableDebugPort: false,
@@ -105,6 +106,11 @@ const booleanFields = [
     help: "Exposes night light / standby LED controls when supported.",
   },
   {
+    key: "bothlightsControl",
+    label: "Both lights control",
+    help: "Adds a single light that turns the downlight and uplight on together at the same brightness.",
+  },
+  {
     key: "enableIncrementalButtons",
     label: "Enable +/- buttons",
     help: "Adds momentary +/- buttons for brightness and fan speed.",
@@ -127,6 +133,7 @@ const lightServiceFields = new Set([
   "showLightAutoSwitch",
   "showDimToWarmSwitch",
   "showStandbyLED",
+  "bothlightsControl",
 ]);
 
 const knownFanFields = [
@@ -244,7 +251,7 @@ function createFanCard(fan, index) {
   identityGrid.className = "settings-grid";
   identityGrid.append(
     createTextField(index, "name", "Fan name", fan.name || "", "Office Fan", "Display name for this fan in HomeKit."),
-    createTextField(index, "ip", "Fan IP address or hostname", fan.ip || "", "192.168.1.150 or fan.local", "IP address, DNS hostname, or mDNS .local hostname."),
+    createTextField(index, "ip", "Fan IP address or hostname", fan.ip || "", "192.168.1.150 or fan.local", "IP address, DNS hostname, or mDNS .local hostname. Leave blank to auto-discover via mDNS using the MAC address."),
     createTextField(index, "mac", "MAC address", fan.mac || "", "20:F8:5E:00:00:00", "MAC address from the Big Ass Fans app Wi-Fi settings."),
     createNumberField(index, "probeFrequency", "Probe frequency (ms)", getValue(fan, "probeFrequency"), "Keep-alive and state refresh interval. Use 0 to disable probing.")
   );
@@ -520,9 +527,6 @@ function getFanErrors(fan) {
   const errors = [];
   if (!String(fan.name || "").trim()) {
     errors.push("name");
-  }
-  if (!String(fan.ip || "").trim()) {
-    errors.push("ip");
   }
   if (!isValidMac(fan.mac)) {
     errors.push("mac");

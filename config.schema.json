@@ -28,7 +28,6 @@
           "type": "object",
           "required": [
             "name",
-            "ip",
             "mac"
           ],
           "properties": {
@@ -41,7 +40,7 @@
             },
             "ip": {
               "title": "Fan IP Address Or Hostname",
-              "description": "IP address, DNS hostname, or mDNS .local hostname for the fan.",
+              "description": "IP address, DNS hostname, or mDNS .local hostname for the fan. Leave blank to auto-discover via mDNS using the MAC address.",
               "type": "string",
               "minLength": 1
             },
@@ -171,6 +170,12 @@
             "showStandbyLED": {
               "title": "Show Standby LED Controls",
               "description": "Expose night light / standby LED controls when supported by the fan. Hidden if Hide Light Controls is enabled.",
+              "type": "boolean",
+              "default": false
+            },
+            "bothlightsControl": {
+              "title": "Both Lights Control",
+              "description": "Add a single light control that turns the downlight and uplight on together and sets both to the same brightness. Only applies to fans with both a downlight and an uplight.",
               "type": "boolean",
               "default": false
             },
