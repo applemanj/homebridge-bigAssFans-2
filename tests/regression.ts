@@ -51,6 +51,8 @@ class FakeService {
   public events: Array<{ characteristic: string; value: unknown; forced: boolean }> = [];
 
   updateCharacteristic(characteristic: string, value: unknown) {
+    // HAP creates absent optional characteristics when updateCharacteristic is called.
+    this.getCharacteristic(characteristic);
     if (this.values.get(characteristic) !== value) {
       this.events.push({ characteristic, value, forced: false });
     }
@@ -83,9 +85,18 @@ class FakeService {
     return this;
   }
 
+  removeCharacteristic(characteristic: { key: string }) {
+    this.characteristics.delete(characteristic.key);
+    this.values.delete(characteristic.key);
+    this.setters.delete(characteristic.key);
+    return this;
+  }
+
   getCharacteristic(characteristic: string) {
+    this.characteristics.add(characteristic);
     const service = this;
     return {
+      key: characteristic,
       sendEventNotification(value: unknown) {
         service.values.set(characteristic, value);
         service.events.push({ characteristic, value, forced: true });
@@ -341,7 +352,7 @@ function createTestServiceState() {
           updatePlatformAccessories: (accessories: FakeAccessory[]) => updatedAccessories.push(...accessories),
           // TypeScript can inline Homebridge's const enum. Keep this numeric so
           // normal compilation and type-stripped test runs exercise the same status.
-          hap: { HapStatusError: FakeHapStatusError, HAPStatus: { SERVICE_COMMUNICATION_FAILURE: -70402 } },
+          hap: { HapStatusError: FakeHapStatusError, HAPStatus: { SERVICE_COMMUNICATION_FAILURE: -70402, READ_ONLY_CHARACTERISTIC: -70404 } },
         },
       },
     },
@@ -1381,6 +1392,51 @@ async function testNightLightFeedbackTimeoutAndDisconnect() {
   }
 }
 
+async function testDisableDirectionControl() {
+  for (const lights of [0, 1, 2]) {
+    const { state, accessory } = createDualLightTestState();
+    state.capabilities.hasFan = true;
+    state.capabilities.hasLight = lights > 0;
+    state.capabilities.hasUplight = lights === 2;
+    state.fanStates = { Active: 0, CurrentFanState: 0, TargetFanState: 0,
+      RotationDirection: 1, RotationSpeed: 1, homeShieldUp: false };
+    Object.assign(state.platform.Characteristic, { RotationDirection: 'RotationDirection', SwingMode: 'SwingMode' });
+    state.disableDirectionControl = false;
+    __test__.makeServices(state);
+    const fan = accessory.getService('Fanv2')!;
+    assert.equal(fan.testCharacteristic('RotationDirection'), true);
+    const oldSetter = fan.setters.get('RotationDirection')!;
+    __test__.onData(state, reportFrame([[44, 1]]));
+    assert.equal(fan.values.get('RotationDirection'), 0);
+
+    state.disableDirectionControl = true;
+    __test__.makeServices(state);
+    assert.equal(fan.testCharacteristic('RotationDirection'), false, 'Remove the cached reverse control');
+    assert.equal(fan.setters.has('RotationDirection'), false);
+    assert.equal(fan.testCharacteristic('SwingMode'), true, 'Whoosh is independent of direction');
+    for (const direction of [0, 1, 0]) {
+      __test__.onData(state, reportFrame([[44, direction]]));
+      assert.equal(state.fanStates.RotationDirection, direction === 0 ? 1 : 0);
+      assert.equal(fan.testCharacteristic('RotationDirection'), false, 'Fan reports must not recreate the control');
+    }
+    const socket = state.client as unknown as FakeSocket;
+    const writes = socket.writes.length;
+    const actual = state.fanStates.RotationDirection;
+    await assert.rejects(Promise.resolve().then(() => oldSetter(0)),
+      (error: unknown) => error instanceof FakeHapStatusError && error.hapStatus === -70404);
+    assert.equal(socket.writes.length, writes, 'A stale setter cannot reverse the fan while disabled');
+    assert.equal(state.fanStates.RotationDirection, actual);
+
+    state.disableDirectionControl = false;
+    __test__.makeServices(state);
+    assert.equal(fan.testCharacteristic('RotationDirection'), true);
+    await fan.setters.get('RotationDirection')!(0);
+    assert.equal(socket.writes.length, writes + 1, 'Re-enabling direction restores the command handler');
+    state.whiteLight?.disconnect();
+    state.nightLight?.disconnect();
+  }
+}
+
 function testBothOnlyAccessoryLayout() {
   for (const initial of ['channels', 'both-only'] as const) {
     const { state, accessory } = createDualLightTestState();
@@ -1487,6 +1543,7 @@ function testSeparateLightAccessories() {
 async function main() {
   testSeparateLightAccessories();
   testBothOnlyAccessoryLayout();
+  await testDisableDirectionControl();
   assert.equal(normalizeDualLightModeControl('both-only'), 'both-only');
   assert.equal(normalizeDualLightModeControl('legacy'), 'exclusive');
   assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');

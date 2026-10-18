@@ -648,6 +648,9 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setRotationDirection(value: CharacteristicValue) {
+    if (this.disableDirectionControl) {
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.READ_ONLY_CHARACTERISTIC);
+    }
     debugLog(this, 'characteristics', 3, 'Set Characteristic RotationDirection -> ' + value);
     this.fanStates.RotationDirection = ((value as number) === 0 ? 1 : 0);
 
@@ -1297,6 +1300,8 @@ function makeServices(pA: BAF) {
       pA.fanService.getCharacteristic(pA.platform.Characteristic.RotationDirection)
         .onSet(pA.setRotationDirection.bind(pA))
         .onGet(pA.getRotationDirection.bind(pA));
+    } else if (pA.fanService.testCharacteristic(pA.platform.Characteristic.RotationDirection)) {
+      pA.fanService.removeCharacteristic(pA.fanService.getCharacteristic(pA.platform.Characteristic.RotationDirection));
     }
 
     // SwingMode maps to Whoosh: 0=Disabled, 1=Enabled
@@ -2244,7 +2249,10 @@ function fanRotationDirection(s: string, pA:BAF) {
   const rotationDirection = value === 0 ? 1 : 0;
   pA.fanStates.RotationDirection = rotationDirection;
   debugLog(pA, ['direction', 'characteristics'], [1, 3], 'update RotationDirection: ' + pA.fanStates.RotationDirection);
-  pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationDirection, pA.fanStates.RotationDirection);
+  // Updating an absent optional characteristic would add it back to HomeKit.
+  if (!pA.disableDirectionControl) {
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationDirection, pA.fanStates.RotationDirection);
+  }
 }
 
 function fanRotationSpeed(s: string, pA:BAF) {

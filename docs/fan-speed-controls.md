@@ -26,3 +26,15 @@ An Off report no longer cancels a queued slider command. An explicit HomeKit Off
 At the end of the 1.5-second display delay, the plugin forces a HomeKit event notification with the settled percentage. It repeats that notification once, one second later, even if the value is unchanged. A new slider request, differing speed feedback, Off, or disconnect cancels a pending repeat. These events do not send commands to the physical fan.
 
 This is a compatibility experiment for Apple Home's expanded slider retaining the requested percentage while the main tile already displays the mapped value. Live testing is needed to establish whether Apple Home refreshes that view.
+
+## Hiding reverse/direction control
+
+`disableDirectionControl: true` removes the optional rotation-direction control
+from the existing fan service, including cached accessories. Incoming direction
+reports still update internal state but cannot recreate the HomeKit control.
+Any stale direction-write handler rejects changes while the option is enabled.
+Unchecking the option restores the control after saving and restarting.
+
+This applies to fans with no light, one light, or dual lights. It is independent
+of the lighting tile layout and does not hide Whoosh/SwingMode or prevent the
+BAF app/remote from changing direction.
