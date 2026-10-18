@@ -1,4 +1,5 @@
 import type { AccessoryLayout, LightTile } from './accessoryLayout';
+import type { DualLightModeControl } from './lighting';
 import type { API, Characteristic, Logger, PlatformConfig, Service } from 'homebridge';
 
 export type DebugLevelConfigEntry = [string, string | number];
@@ -10,7 +11,7 @@ export interface BigAssFansDeviceConfig {
   mac: string;
   debugLevels?: DebugLevelConfigEntry[];
   noLights?: boolean;
-  dualLightModeControl?: 'exclusive' | 'channels' | 'both-up' | 'both-only';
+  dualLightModeControl?: DualLightModeControl;
   downlightEquipped?: LightDetectionOverride;
   uplightEquipped?: LightDetectionOverride;
   whoosh?: boolean;

@@ -3,7 +3,7 @@
 import type { LightTile } from './accessoryLayout';
 import * as net from 'net';
 import type { Service, PlatformAccessory, CharacteristicValue, WithUUID } from 'homebridge';
-import { DualLightCoordinator, lightCommand, normalizeDualLightModeControl, type WhiteLightState } from './lighting';
+import { DualLightCoordinator, lightCommand, normalizeDualLightModeControl, type DualLightModeControl, type WhiteLightState } from './lighting';
 import { emptyNightLightState, NightLightCoordinator, nightLightColor, nightLightCommand, type NightLightState } from './nightlight';
 import type { BigAssFansAccessoryContext, BigAssFansPlatformContext, LightDetectionOverride } from './types';
 import {
@@ -58,7 +58,7 @@ export class BigAssFans_i6PlatformAccessory {
   public whiteLight?: DualLightCoordinator;
   public whiteLightService?: Service;
   public lightModeServices: Map<number, Service> = new Map();
-  public dualLightModeControl: 'exclusive' | 'channels' | 'both-up' | 'both-only' = 'exclusive';
+  public dualLightModeControl: DualLightModeControl = 'exclusive';
   public whiteLightReport: Partial<WhiteLightState> = {};
   public nightLight?: NightLightCoordinator;
   public nightLightReport?: NightLightState;
@@ -68,6 +68,7 @@ export class BigAssFans_i6PlatformAccessory {
   public fanService!: Service;
   public downlightBulbService!: Service;
   public uplightBulbService!: Service;
+  public bothlightsBulbService?: Service;
   public humiditySensorService!: Service;
   public temperatureSensorService!: Service;
   public whooshSwitchService!: Service;
@@ -491,6 +492,65 @@ export class BigAssFans_i6PlatformAccessory {
   async getUpBrightness(): Promise<CharacteristicValue> {
     const brightness = (this.uplightStates.Brightness === 0 ? 1 : this.uplightStates.Brightness);
     debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Up Brightness -> ' + brightness);
+    return brightness;
+  }
+
+  // Upstream v1.2.0 dimmers, retained for the separate-dimmer comparison layouts.
+  async setBothLightsOnState(value: CharacteristicValue) {
+    debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Lights On -> ' + value);
+
+    // per upstream issue #30 beta6: explicitly target BOTH before the command,
+    // otherwise the fan applies it to whichever bulb was last selected
+    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
+
+    this.downlightStates.On = value as boolean;
+    this.uplightStates.On = value as boolean;
+    clientWrite(this.client, ONEBYTEHEADER.concat([0xa0, 0x04, (value ? 0x01 : 0x00)]), this);
+  }
+
+  async getBothLightsOnState(): Promise<CharacteristicValue> {
+    const isOn = this.downlightStates.On || this.uplightStates.On;
+    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Lights On -> ' + isOn);
+    return isOn;
+  }
+
+  async setBothBrightness(value: CharacteristicValue) {
+    let b: number[];
+
+    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
+
+    if (value === 0) {
+      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
+      this.downlightStates.homeShieldUp = true;
+      this.uplightStates.homeShieldUp = true;
+      this.downlightStates.Brightness = 0;
+      this.uplightStates.Brightness = 0;
+      const b1 = ONEBYTEHEADER.concat([0xa8, 0x04, 1]); // this one is for the device's memory
+      const b2 = ONEBYTEHEADER.concat([0xa8, 0x04, 0]); // this one is actually turn off light
+      b = b1.concat(b2);
+    } else if (value === 100 && (this.downlightStates.homeShieldUp || this.uplightStates.homeShieldUp)) {
+      this.downlightStates.homeShieldUp = false;
+      this.uplightStates.homeShieldUp = false;
+      this.downlightStates.Brightness = 1;
+      this.uplightStates.Brightness = 1;
+      b = ONEBYTEHEADER.concat([0xa8, 0x04, 1]);
+    } else {
+      this.downlightStates.homeShieldUp = false;
+      this.uplightStates.homeShieldUp = false;
+      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
+      this.downlightStates.Brightness = value as number;
+      this.uplightStates.Brightness = value as number;
+      b = ONEBYTEHEADER.concat([0xa8, 0x04, this.downlightStates.Brightness]);
+    }
+    clientWrite(this.client, b, this);
+  }
+
+  async getBothBrightness(): Promise<CharacteristicValue> {
+    const brightness = Math.max(
+      this.downlightStates.Brightness === 0 ? 1 : this.downlightStates.Brightness,
+      this.uplightStates.Brightness === 0 ? 1 : this.uplightStates.Brightness,
+    );
+    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Brightness -> ' + brightness);
     return brightness;
   }
 
@@ -1245,16 +1305,30 @@ function makeCoordinatedLights(pA: BAF) {
 
 
 function makeServices(pA: BAF) {
-  // Upgrade upstream's optional third dimmer to the coordinated mode controls.
-  zapService(pA, 'bothlights', ['light-4'],
-    [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-4' }]);
-  const coordinated = !pA.noLights && pA.capabilities.hasLight && pA.capabilities.hasUplight;
+  const dualLight = !pA.noLights && pA.capabilities.hasLight && pA.capabilities.hasUplight;
+  const separateDimmers = dualLight &&
+    (pA.dualLightModeControl === 'separate-dimmers' || pA.dualLightModeControl === 'separate-dimmers-both');
+  const bothDimmer = separateDimmers && pA.dualLightModeControl === 'separate-dimmers-both';
+  const coordinated = dualLight && !separateDimmers;
+  if (!bothDimmer) {
+    zapService(pA, 'bothlights', ['light-4'],
+      [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-4' }]);
+    pA.bothlightsBulbService = undefined;
+  }
   pA.lightTiles = {};
-  if (coordinated && pA.platform.layout) {
-    pA.lightTiles.white = pA.platform.layout.owner(pA.accessory, 'white', 'White Ambiance', ['white-light']);
-    if (pA.dualLightModeControl !== 'both-only') {
-      pA.lightTiles.modes = pA.platform.layout.owner(pA.accessory, 'modes', 'Light Mode',
-        ['white-mode-0', 'white-mode-1', 'white-mode-2']);
+  if (dualLight && pA.platform.layout) {
+    if (separateDimmers) {
+      pA.lightTiles.down = pA.platform.layout.owner(pA.accessory, 'down', 'Downlight', ['light-1']);
+      pA.lightTiles.up = pA.platform.layout.owner(pA.accessory, 'up', 'Uplight', ['light-2']);
+      if (bothDimmer) {
+        pA.lightTiles.both = pA.platform.layout.owner(pA.accessory, 'both', 'Both Lights', ['light-4']);
+      }
+    } else {
+      pA.lightTiles.white = pA.platform.layout.owner(pA.accessory, 'white', 'White Ambiance', ['white-light']);
+      if (pA.dualLightModeControl !== 'both-only') {
+        pA.lightTiles.modes = pA.platform.layout.owner(pA.accessory, 'modes', 'Light Mode',
+          ['white-mode-0', 'white-mode-1', 'white-mode-2']);
+      }
     }
     if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
       pA.lightTiles.night = pA.platform.layout.owner(pA.accessory, 'night', 'LED Back Light', ['light-3']);
@@ -1419,16 +1493,19 @@ function makeServices(pA: BAF) {
     }
   }
 
-  // Single-light fans retain their existing dimmer services and handlers.
+  // Single-light fans and the upstream comparison layouts use the original dimmer handlers.
   if (!coordinated && pA.capabilities.hasLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} downlight disabled by configuration '"noLights": true'`);
       zapService(pA, 'downlight', ['light-1'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-1' }]);
+      pA.downlightBulbService = undefined!;
     } else {
-      pA.downlightBulbService = pA.accessory.getService(pA.platform.Service.Lightbulb) ||
-        pA.accessory.getService('downlight') ||
-        pA.accessory.addService(pA.platform.Service.Lightbulb, 'downlight', 'light-1');
-      setName(pA, pA.downlightBulbService, pA.Name + (capitalizeName ? ' Light' : ' light'));
+      const owner = pA.lightTiles.down ?? pA.accessory;
+      pA.downlightBulbService = (separateDimmers
+        ? owner.getServiceById(pA.platform.Service.Lightbulb, 'light-1')
+        : owner.getService(pA.platform.Service.Lightbulb) || owner.getService('downlight')) ||
+        owner.addService(pA.platform.Service.Lightbulb, 'downlight', 'light-1');
+      setName(pA, pA.downlightBulbService, pA.Name + (separateDimmers ? ' Downlight' : capitalizeName ? ' Light' : ' light'));
 
       pA.downlightBulbService.getCharacteristic(pA.platform.Characteristic.On)
         .onSet(pA.setDownLightOnState.bind(pA))
@@ -1448,6 +1525,7 @@ function makeServices(pA: BAF) {
     }
   } else {
     zapService(pA, 'downlight', ['light-1'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-1' }]);
+    pA.downlightBulbService = undefined!;
   }
 
   // uplight
@@ -1455,9 +1533,11 @@ function makeServices(pA: BAF) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} uplight disabled by configuration '"noLights": true'`);
       zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
+      pA.uplightBulbService = undefined!;
     } else {
-      pA.uplightBulbService = pA.accessory.getService('uplight') ||
-        pA.accessory.addService(pA.platform.Service.Lightbulb, 'uplight', 'light-2');
+      const owner = pA.lightTiles.up ?? pA.accessory;
+      pA.uplightBulbService = owner.getServiceById(pA.platform.Service.Lightbulb, 'light-2') ||
+        owner.getService('uplight') || owner.addService(pA.platform.Service.Lightbulb, 'uplight', 'light-2');
       setName(pA, pA.uplightBulbService, pA.Name + (capitalizeName ? ' Uplight' : ' uplight'));
 
       pA.uplightBulbService.getCharacteristic(pA.platform.Characteristic.On)
@@ -1472,6 +1552,20 @@ function makeServices(pA: BAF) {
     }
   } else {
     zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
+    pA.uplightBulbService = undefined!;
+  }
+
+  if (bothDimmer) {
+    const owner = pA.lightTiles.both ?? pA.accessory;
+    pA.bothlightsBulbService = owner.getServiceById(pA.platform.Service.Lightbulb, 'light-4') ||
+      owner.addService(pA.platform.Service.Lightbulb, 'bothlights', 'light-4');
+    setName(pA, pA.bothlightsBulbService, pA.Name + ' Both Lights');
+    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.On)
+      .onSet(pA.setBothLightsOnState.bind(pA))
+      .onGet(pA.getBothLightsOnState.bind(pA));
+    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.Brightness)
+      .onSet(pA.setBothBrightness.bind(pA))
+      .onGet(pA.getBothBrightness.bind(pA));
   }
 
   if (pA.capabilities.hasUVCLight) {
@@ -1582,7 +1676,7 @@ function makeServices(pA: BAF) {
       .onGet(pA.getStandbyLEDEnabledSwitchOnState.bind(pA));
 
     makeStandbyLED(pA);
-    if (coordinated) {
+    if (dualLight) {
       zapService(pA, 'standbyEnabledSwitch', ['switch-7']);
       pA.standbyLEDEnabledSwitchService = undefined!;
     }
@@ -2074,7 +2168,24 @@ function lightBrightness(s: string, pA:BAF) {
       targetedlightBrightness(value, pA.downlightBulbService, pA.downlightStates, 'Down', pA);
       break;
   }
+
+  syncBothlightsService(pA);
 }
+function syncBothlightsService(pA:BAF) {
+  if (pA.bothlightsBulbService === undefined) {
+    return;
+  }
+
+  const isOn = pA.downlightStates.On || pA.uplightStates.On;
+  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.On, isOn);
+
+  const brightness = Math.max(
+    pA.downlightStates.Brightness === 0 ? 1 : pA.downlightStates.Brightness,
+    pA.uplightStates.Brightness === 0 ? 1 : pA.uplightStates.Brightness,
+  );
+  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.Brightness, brightness);
+}
+
 function targetedlightBrightness(value:number, lightBulbService:Service, states:lightStates, description:string, pA:BAF) {
   if (lightBulbService === undefined) {
     debugLog(pA, 'redflags', 1, `lightBrightness: no ${description} lightbulb Service to set to ${value}`);
@@ -2140,6 +2251,8 @@ function lightOnState(s: string, pA:BAF) {
         break;
     }
   }
+
+  syncBothlightsService(pA);
 }
 function targetedlightOnState(value:number, service:Service, states:lightStates, description:string, pA:BAF) {
   debugLog(pA, 'light', 1, `${description} lightOnState value: ` + value);

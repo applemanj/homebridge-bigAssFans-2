@@ -1,6 +1,6 @@
 # Dual-light controls
 
-Fans that report both a downlight and an uplight get one **White Light** tile with power, brightness and (when supported) color temperature.
+By default, fans that report both a downlight and an uplight get one **White Light** tile with power, brightness and (when supported) color temperature. Two additional layouts expose separate dimmers using upstream v1.2.0 light behavior for comparison.
 
 When adding a fan, enter its name and either its IP address/hostname or MAC address, then use **Test Connection** directly below those fields. The test reads supported features and fills an empty MAC address field from the fan's identity report. Select your options and save. If the fan does not report its MAC, enter it from the BAF app's Wi-Fi settings before saving. Existing MAC addresses are preserved because they identify paired HomeKit accessories; a mismatch is shown for review. Testing does not save the configuration.
 
@@ -12,9 +12,26 @@ Choose **Dual-light mode controls** in the plugin settings:
 
 - **Both only — no mode switches** (`both-only`): exposes the White Ambiance tile without a Light Mode accessory. Every HomeKit white-light command selects Both before applying power, brightness or color temperature. It uses Down/Both's brightness memory. Selecting this option removes existing mode switches; changing back recreates them. White-light and night-light accessory identities stay the same.
 
+- **Two dimmers — Down / Up (upstream)** (`separate-dimmers`): two separate light accessories, without White Ambiance or mode switches.
+- **Three dimmers — Down / Up / Both (upstream)** (`separate-dimmers-both`): the same controls plus a separate Both Lights dimmer, without mode switches.
+
 Both-only does not force a mode on startup or in response to BAF app/remote changes. External state is still displayed accurately; the next HomeKit white-light command selects Both again. Changing temperature while off keeps the light off, and zero brightness retains the usual Off/restore behavior.
 
-The legacy separate-dimmer option has been removed for dual-light fans. Existing `legacy` configurations use Down / Up / Both instead, and the settings UI saves the replacement value. Single-light fans keep their existing dimmer and accessory identity. For dual-light fans migrating from legacy controls, HomeKit scenes referencing the replaced dimmers may need updating.
+The old `legacy` option remains retired; it is not an alias for either explicit upstream comparison layout. Existing `legacy` configurations use Down / Up / Both instead, and the settings UI saves the replacement value. Single-light fans keep their existing dimmer and accessory identity. For dual-light fans migrating from legacy controls, HomeKit scenes referencing the replaced dimmers may need updating.
+
+## Upstream dimmer comparison layouts
+
+The two- and three-dimmer layouts retain the upstream v1.2.0 Down/Up command handlers; the third dimmer uses its Both Lights handlers and aggregate feedback. Each has On/Off and brightness. As upstream does, only Down exposes color temperature when supported. These layouts bypass the coordinated white-light controller, including its brightness memory, slider handling and feedback reconciliation. The original zero-brightness workaround writes 1 then 0. The ES6 uplight brightness handler also retains upstream's cached-selector workaround.
+
+The fan has a shared light-selection mode, so these are not independent lamps. The Both tile reports the cached Down/Up On states combined with OR and the larger cached brightness; it is not an indicator that Both mode is selected. Up Off still selects Up then sends Off. That can turn both physical lights off when starting in Both mode on the ES6. These behaviors are retained deliberately for testing, rather than silently applying the coordinator's fixes.
+
+The original report is [oogje/homebridge-i6-bigAssFans#30](https://github.com/oogje/homebridge-i6-bigAssFans/issues/30), including [the ES6 Both-to-Up-Off example](https://github.com/oogje/homebridge-i6-bigAssFans/issues/30#issuecomment-2788002586). Upstream's third dimmer adds an explicit way to select Both; the individual Up/Down on/off and brightness handlers remain unchanged from the earlier version. This is a code comparison, not a claim that the new upstream build has been tested on the ES6.
+
+These options test the upstream **white-light handlers**, not a complete upstream installation. Shared network parsing/discovery, fan-speed fixes, night-light controls and separate accessory layout remain those of this fork. Fan and LED Back Light identities remain when switching. Down and Up identities remain when changing between two and three dimmers. Switching to or from White Ambiance replaces white-light/mode accessories, so review scenes, names and room assignments. Saved coordinated brightness memory is retained for switching back.
+
+For a hardware comparison, try Down On and brightness, Up On and brightness, and Both On/brightness (three-dimmer layout). Then start in Both mode via the BAF app and turn Up off in Home. Compare physical lights, the BAF mode and all Home tiles. Finally test zero and On. Change back to a coordinated layout to compare the same actions. These options affect only fans detected/configured with both white lights.
+
+## Coordinated white-light behavior
 
 In layouts with mode switches, those switches select which lights the White Light dimmer controls. They do not control power. Turning White Light off or dimming it to zero retains the selected mode. Changing modes while off leaves the lights off; turning White Light on restores the selected mode's brightness. Mode changes while off do not send a brightness command, and off-state reports do not overwrite an existing remembered brightness.
 
@@ -93,11 +110,11 @@ Mode-only feedback updates the HomeKit mode switches immediately, even when brig
 Dual-light fans expose the following accessories through the same Homebridge bridge:
 
 - The original Fan accessory, retaining its fan controls and optional sensors/switches.
-- White Ambiance: one white-light dimmer with On/Off and supported color temperature.
+- White Ambiance in coordinated layouts, or separate Downlight/Uplight and optional Both Lights dimmers in upstream comparison layouts.
 - LED Back Light: one color-light accessory, only when supported and enabled in configuration.
-- Light Mode: the configured Down/Up/Both or Down+Up switches together on one accessory. Both/Up has just one switch; Both-only creates no Light Mode accessory.
+- Light Mode: the configured Down/Up/Both or Down+Up switches together on one accessory. Both/Up has just one switch; Both-only and both upstream dimmer layouts create no Light Mode accessory.
 
-All tiles share one fan connection and lighting coordinator. Mode selection, brightness memory, BAF app feedback, and standby behavior are unchanged. Apple Home controls the visual presentation of each accessory; the mode accessory can be shown together without grouping it with the fan or lights.
+All tiles share one fan connection. Coordinated layouts also share one lighting coordinator. Mode selection, brightness memory, BAF app feedback, and standby behavior are unchanged. Apple Home controls the visual presentation of each accessory; the mode accessory can be shown together without grouping it with the fan or lights.
 
 This migration retains the original fan identity and stored brightness memory. The lights and mode controls gain separate accessory identities, so their room assignment, names, favorites, and scene/automation references may need updating in Apple Home. Do not delete or re-pair the bridge. Single-light fans retain their existing accessory layout. Disabling a light feature removes its separate accessory; removing a fan removes all its child accessories.
 

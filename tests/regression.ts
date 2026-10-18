@@ -1540,14 +1540,146 @@ function testSeparateLightAccessories() {
   assert.equal(state.fanService, fan);
 }
 
+async function testUpstreamDimmerLayouts() {
+  for (const mode of ['separate-dimmers', 'separate-dimmers-both'] as const) {
+    const { state, accessory } = createDualLightTestState();
+    state.dualLightModeControl = mode;
+    state.Model = 'es6';
+    __test__.makeServices(state);
+    assert.equal(state.whiteLight, undefined, 'Comparison dimmers must bypass the coordinated implementation');
+    assert.equal(state.lightModeServices.size, 0);
+    const down = accessory.getServiceById('Lightbulb', 'light-1')!;
+    const up = accessory.getServiceById('Lightbulb', 'light-2')!;
+    const both = accessory.getServiceById('Lightbulb', 'light-4');
+    assert.ok(down && up);
+    assert.equal(Boolean(both), mode === 'separate-dimmers-both');
+    assert.ok(down.testCharacteristic('ColorTemperature'));
+    assert.equal(up.testCharacteristic('ColorTemperature'), false);
+    assert.equal(both?.testCharacteristic('ColorTemperature') ?? false, false);
+    const socket = state.client as unknown as FakeSocket;
+    const command = (key: number, value: number) => [0x12, 7, 0x12, 5, 0x1a, 3, key, 4, value];
+    const selector = (value: number) => [0x12, 7, 0x12, 5, 0x1a, 3, 0x90, 5, value];
+    const writes = () => socket.writes.splice(0).map(frame => [...__test__.unstuff(frame.subarray(1, -1))]);
+    writes();
+    __test__.onData(state, reportFrame([[82, 0], [68, 1], [69, 67]]));
+    await up.setters.get('On')!(false);
+    assert.deepEqual(writes(), [selector(2), command(0xa0, 0)], 'Up Off retains upstream select-Up-then-Off behavior');
+    await down.setters.get('Brightness')!(35);
+    assert.deepEqual(writes(), [selector(1), command(0xa8, 35)]);
+    state.targetBulb = 1;
+    await up.setters.get('Brightness')!(75);
+    assert.deepEqual(writes(), [selector(2), selector(1), command(0xa8, 75)],
+      'Retain upstream ES6 cached-selector workaround for comparison');
+    await down.setters.get('Brightness')!(0);
+    assert.deepEqual(writes(), [selector(1), [...command(0xa8, 1), ...command(0xa8, 0)]],
+      'Retain upstream zero-brightness workaround');
+    if (both) {
+      await both.setters.get('On')!(true);
+      assert.deepEqual(writes(), [selector(0), command(0xa0, 1)]);
+      await both.setters.get('Brightness')!(60);
+      assert.deepEqual(writes(), [selector(0), command(0xa8, 60)]);
+      __test__.onData(state, reportFrame([[82, 0], [68, 1], [69, 60]]));
+      assert.equal(both.values.get('Brightness'), 60);
+      assert.equal(both.values.get('On'), true);
+      __test__.onData(state, reportFrame([[82, 2], [68, 0]]));
+      assert.equal(both.values.get('On'), true, 'Upstream aggregate remains On while cached Down is On');
+      assert.equal(await state.getBothLightsOnState(), true);
+      assert.equal(await state.getBothBrightness(), 60);
+      await both.setters.get('Brightness')!(0);
+      assert.deepEqual(writes(), [selector(0), [...command(0xa8, 1), ...command(0xa8, 0)]]);
+    }
+    state.nightLight?.disconnect();
+  }
+}
+
+function testUpstreamDimmerAccessoryMigration() {
+  const { state, accessory } = createDualLightTestState();
+  accessory.context.device = { name: 'Test Fan', mac: state.MAC };
+  accessory.context.whiteLightMemory = { down: 25, up: 75 };
+  state.capabilities.hasFan = true;
+  const cached = [accessory] as unknown as PlatformAccessory<BigAssFansAccessoryContext>[];
+  const api = {
+    platformAccessory: FakeAccessory,
+    hap: { Service: state.platform.Service, Characteristic: state.platform.Characteristic, uuid: { generate: (s: string) => s } },
+    registerPlatformAccessories: () => undefined,
+    unregisterPlatformAccessories: () => undefined,
+    updatePlatformAccessories: () => undefined,
+  } as unknown as API;
+  Object.assign(state.platform, { layout: new AccessoryLayout(api, cached, 'plugin', 'platform') });
+  __test__.makeServices(state);
+  const fan = state.fanService;
+  const night = state.lightTiles.night;
+  for (const mode of ['separate-dimmers', 'separate-dimmers-both', 'separate-dimmers', 'both-only',
+    'separate-dimmers-both', 'exclusive'] as const) {
+    const previousDown = state.lightTiles.down;
+    state.dualLightModeControl = mode;
+    __test__.makeServices(state);
+    assert.equal(state.fanService, fan);
+    assert.equal(state.lightTiles.night, night);
+    assert.deepEqual(accessory.context.whiteLightMemory, { down: 25, up: 75 });
+    if (mode.startsWith('separate-dimmers')) {
+      assert.equal(state.whiteLight, undefined);
+      assert.equal(state.lightTiles.white, undefined);
+      assert.equal(state.lightTiles.modes, undefined);
+      assert.equal(state.lightModeServices.size, 0);
+      assert.equal(cached.length, mode === 'separate-dimmers-both' ? 5 : 4);
+      assert.ok(cached.every(owner => owner.services.every(service => !service.subtype?.startsWith('white-'))));
+      for (const role of ['down', 'up', 'both'] as const) {
+        const tile = state.lightTiles[role];
+        if (role === 'both' && mode === 'separate-dimmers') {
+          assert.equal(tile, undefined);
+        } else {
+          assert.equal(tile?.services.filter(service => service.UUID === 'Lightbulb').length, 1);
+          assert.notEqual(tile, accessory);
+        }
+      }
+      if (previousDown) {
+        assert.equal(state.lightTiles.down, previousDown, 'Two/three dimmer changes retain the common tiles');
+      }
+    } else {
+      assert.ok(state.whiteLight);
+      assert.equal(state.lightTiles.down, undefined);
+      assert.equal(state.bothlightsBulbService, undefined);
+      assert.ok(cached.every(owner => owner.services.every(service => !['light-1', 'light-2', 'light-4'].includes(service.subtype!))));
+    }
+    const owners = [...cached];
+    Object.assign(state.platform, { layout: new AccessoryLayout(api, cached, 'plugin', 'platform') });
+    __test__.makeServices(state);
+    assert.deepEqual(cached, owners, 'Repeated setup and restored caches must not duplicate accessories');
+  }
+  state.dualLightModeControl = 'separate-dimmers-both';
+  __test__.makeServices(state);
+  state.noLights = true;
+  __test__.makeServices(state);
+  assert.equal(cached.length, 1);
+  assert.equal(state.bothlightsBulbService, undefined);
+  state.noLights = false;
+  state.capabilities.hasUplight = false;
+  state.capabilities.hasStandbyLED = false;
+  __test__.makeServices(state);
+  assert.equal(cached.length, 1);
+  assert.ok(accessory.getServiceById('Lightbulb', 'light-1'));
+  assert.equal(state.fanService, fan);
+  assert.equal(state.uplightBulbService, undefined);
+  __test__.onData(state, reportFrame([[82, 1], [68, 1], [69, 42]]));
+  assert.equal(accessory.getServiceById('Lightbulb', 'light-1')?.values.get('Brightness'), 42);
+  assert.equal(accessory.getServiceById('Lightbulb', 'light-1')?.values.get('On'), true);
+  state.capabilities.hasLight = false;
+  __test__.makeServices(state);
+  assert.equal(cached.length, 1);
+  assert.equal(accessory.services.some(service => service.UUID === 'Lightbulb'), false);
+}
+
 async function main() {
+  await testUpstreamDimmerLayouts();
+  testUpstreamDimmerAccessoryMigration();
   testSeparateLightAccessories();
   testBothOnlyAccessoryLayout();
   await testDisableDirectionControl();
   assert.equal(normalizeDualLightModeControl('both-only'), 'both-only');
   assert.equal(normalizeDualLightModeControl('legacy'), 'exclusive');
   assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');
-  for (const mode of ['exclusive', 'channels', 'both-up', 'both-only', 'legacy']) {
+  for (const mode of ['exclusive', 'channels', 'both-up', 'both-only', 'separate-dimmers', 'separate-dimmers-both', 'legacy']) {
     for (const uplight of [false, true]) {
       const { state, accessory } = createDualLightTestState();
       state.capabilities.hasLight = !uplight;

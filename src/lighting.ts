@@ -1,9 +1,11 @@
 /** The white emitters share one output level; selection is a global fan mode. */
 export type LightSelection = 0 | 1 | 2; // Both, Down, Up
-export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up' | 'both-only';
+export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up' | 'both-only' | 'separate-dimmers' | 'separate-dimmers-both';
 
 export function normalizeDualLightModeControl(value: unknown): DualLightModeControl {
-  return value === 'channels' || value === 'both-up' || value === 'both-only' ? value : 'exclusive';
+  return value === 'channels' || value === 'both-up' || value === 'both-only' ||
+    value === 'separate-dimmers' || value === 'separate-dimmers-both'
+    ? value : 'exclusive';
 }
 
 export type LightPower = 0 | 1 | 2; // Off, On, Auto

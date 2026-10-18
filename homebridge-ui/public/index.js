@@ -463,14 +463,16 @@ function createModeSelect(index, value) {
     ["channels", "Down + Up — combine switches"],
     ["both-up", "Both / Up — single switch"],
     ["both-only", "Both only — no mode switches"],
+    ["separate-dimmers", "Two dimmers — Down / Up (upstream)"],
+    ["separate-dimmers-both", "Three dimmers — Down / Up / Both (upstream)"],
   ].forEach(([key, label]) => {
     const option = document.createElement("option");
     option.value = key;
     option.textContent = label;
     select.appendChild(option);
   });
-  select.value = ["exclusive", "channels", "both-up", "both-only"].includes(value) ? value : "exclusive";
-  wrapper.append(select, createSmall("Used only when both lights are present. Mode switches stay selected while the light is off and do not turn it on. In Down + Up, turning off the last selected switch selects the other. Both / Up: on = both, off = up. Both restores Down's brightness. Both only hides mode switches and selects both emitters for every HomeKit white-light command."));
+  select.value = ["exclusive", "channels", "both-up", "both-only", "separate-dimmers", "separate-dimmers-both"].includes(value) ? value : "exclusive";
+  wrapper.append(select, createSmall("Used only when both lights are present. Mode switches stay selected while the light is off and do not turn it on. In Down + Up, turning off the last selected switch selects the other. Both / Up: on = both, off = up. Both restores Down's brightness. Both only hides mode switches and selects both emitters for every HomeKit white-light command. Two/three dimmers creates separate light tiles with no mode switches, using upstream light behavior. Using a dimmer changes the fan’s shared light mode; these are not independent lights."));
   return wrapper;
 }
 
@@ -660,7 +662,7 @@ function updateConfigFromForm(validate) {
     setLightOption(fan, card, "downlightEquipped");
     setLightOption(fan, card, "uplightEquipped");
     const lightModeControl = getFieldValue(card, "dualLightModeControl") || state.config.fans[index]?.dualLightModeControl || "exclusive";
-    fan.dualLightModeControl = ["exclusive", "channels", "both-up", "both-only"].includes(lightModeControl) ? lightModeControl : "exclusive";
+    fan.dualLightModeControl = ["exclusive", "channels", "both-up", "both-only", "separate-dimmers", "separate-dimmers-both"].includes(lightModeControl) ? lightModeControl : "exclusive";
 
     booleanFields.forEach((field) => {
       const checked = getCheckboxValue(card, field.key);

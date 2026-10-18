@@ -252,7 +252,7 @@ MIT
 
 ## Coordinated lights and fan feedback
 
-See [dual-light controls](docs/dual-light-controls.md) for mode selection, brightness memory, night-light controls, capability testing, and migration to separate HomeKit accessories. Single-light fans retain their existing accessory layout. Existing upstream Both Lights services are replaced by the coordinated controls.
+See [dual-light controls](docs/dual-light-controls.md) for mode selection, brightness memory, night-light controls, capability testing, and migration to separate HomeKit accessories. Single-light fans retain their existing accessory layout. Choose coordinated controls or two/three separate dimmer tiles using upstream white-light handlers for comparison. The separate dimmers share the fan light mode; they are not independent lamps.
 
 See [fan speed controls](docs/fan-speed-controls.md) for saved-speed wake behavior, percentage settling, and the experimental HomeKit slider notifications. These fan changes apply to both single-light and dual-light fans.
 

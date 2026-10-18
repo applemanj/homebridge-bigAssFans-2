@@ -156,13 +156,15 @@
             },
             "dualLightModeControl": {
               "title": "Dual-light mode controls",
-              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off. With both-only, no mode switches are created and HomeKit white-light commands select Both.",
+              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off. With both-only, no mode switches are created and HomeKit white-light commands select Both. With separate-dimmers, Down and Up have separate light tiles; separate-dimmers-both adds Both. These use upstream light behavior with no mode switches. The dimmers share the fan light mode and are not independent lights.",
               "type": "string",
               "enum": [
                 "exclusive",
                 "channels",
                 "both-up",
-                "both-only"
+                "both-only",
+                "separate-dimmers",
+                "separate-dimmers-both"
               ],
               "default": "exclusive"
             },

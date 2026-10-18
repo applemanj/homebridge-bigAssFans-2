@@ -1,7 +1,7 @@
 import type { API, PlatformAccessory } from 'homebridge';
 import type { BigAssFansAccessoryContext } from './types';
 
-export type LightTile = 'white' | 'modes' | 'night';
+export type LightTile = 'white' | 'modes' | 'night' | 'down' | 'up' | 'both';
 type Accessory = PlatformAccessory<BigAssFansAccessoryContext>;
 
 /** Separate HomeKit identities sharing the original fan's one network handler. */
