@@ -202,6 +202,35 @@ async function main() {
     ordered.light.disconnect();
   }
 
+  // Both-only is a HomeKit command policy, not a feedback rewrite loop.
+  const fixed = harness();
+  fixed.light.bothOnly = true;
+  fixed.light.report({ selection: 2, power: 1, brightness: 75 });
+  assert.equal(fixed.commands.length, 0, 'Configuration and external reports do not write a mode');
+  await apply(fixed.light, [fixed.light.setPower(true)]);
+  assert.deepEqual(fixed.commands.at(-1), [
+    { field: 82, value: 0 }, { field: 69, value: 25 }, { field: 68, value: 1 },
+  ]);
+  await apply(fixed.light, [fixed.light.setBrightness(60)]);
+  assert.deepEqual(fixed.commands.at(-1), [{ field: 82, value: 0 }, { field: 69, value: 60 }]);
+  await apply(fixed.light, [fixed.light.setBrightness(0)], { power: 0 });
+  assert.deepEqual(fixed.commands.at(-1), [{ field: 82, value: 0 }, { field: 68, value: 0 }]);
+  await apply(fixed.light, [fixed.light.setPower(true)]);
+  assert.equal(fixed.light.state.brightness, 25, 'A drag to zero keeps the pre-drag Both level');
+  const count = fixed.commands.length;
+  fixed.light.report({ selection: 2, power: 0, brightness: 75 });
+  assert.equal(fixed.light.view.selection, 2, 'External state is reported honestly');
+  assert.equal(fixed.commands.length, count);
+  await apply(fixed.light, [fixed.light.setTemperature(286)]);
+  assert.equal(fixed.light.state.selection, 0);
+  assert.equal(fixed.light.state.power, 0, 'Temperature while off must not turn the light on');
+  assert.ok(fixed.commands.at(-1)!.every(command => command.field !== 69));
+  assert.equal(fixed.commands.at(-1)![0].field, 82);
+  fixed.light.bothOnly = false;
+  await apply(fixed.light, [fixed.light.select(2, true)]);
+  assert.equal(fixed.light.state.selection, 2, 'Switching layouts restores selectable modes');
+  fixed.light.disconnect();
+
   // The device report wins even during an outstanding HomeKit command.
   // There is no source/revision marker that can distinguish a BAF app change from an echo.
   const stale = harness();

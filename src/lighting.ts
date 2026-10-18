@@ -1,9 +1,9 @@
 /** The white emitters share one output level; selection is a global fan mode. */
 export type LightSelection = 0 | 1 | 2; // Both, Down, Up
-export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up';
+export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up' | 'both-only';
 
 export function normalizeDualLightModeControl(value: unknown): DualLightModeControl {
-  return value === 'channels' || value === 'both-up' ? value : 'exclusive';
+  return value === 'channels' || value === 'both-up' || value === 'both-only' ? value : 'exclusive';
 }
 
 export type LightPower = 0 | 1 | 2; // Off, On, Auto
@@ -23,6 +23,7 @@ export class DualLightCoordinator {
   public state: WhiteLightState = { selection: 1, power: 0, brightness: 50 };
   public memory: LightMemory = {};
   public ready = false;
+  public bothOnly = false;
   private reported: Partial<WhiteLightState> = {};
   private intent: Intent = {};
   private expected?: WhiteLightState;
@@ -157,6 +158,10 @@ export class DualLightCoordinator {
       this.finishSlider();
     }
     this.intent = { ...this.intent, ...intent };
+    if (this.bothOnly) {
+      // Apply the policy only to HomeKit requests; external reports stay truthful.
+      this.intent.selection = 0;
+    }
     clearTimeout(this.debounce);
     this.debounce = setTimeout(() => this.flush(), 80);
     return new Promise((resolve, reject) => this.pending.push({ resolve, reject }));
@@ -171,7 +176,7 @@ export class DualLightCoordinator {
     const commands: LightCommand[] = [];
     const changedMode = next.selection !== previous.selection;
     const waking = next.power > 0 && next.brightness > 0 && (previous.power === 0 || previous.brightness === 0);
-    if (changedMode || waking) {
+    if (changedMode || waking || (this.bothOnly && Object.keys(this.intent).length > 0)) {
       commands.push({ field: 82, value: next.selection });
     }
     if (next.power > 0 && next.brightness > 0 &&

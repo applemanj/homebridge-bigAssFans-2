@@ -171,7 +171,7 @@ Common optional choices:
 | `showFanOccupancySensor` | `false` | Exposes fan occupancy when supported by the fan. |
 | `showLightOccupancySensor` | `false` | Exposes light occupancy when supported by the fan. |
 | `showStandbyLED` | `false` | Exposes night light / standby LED controls when supported by the fan. Hidden if `noLights` is enabled. |
-| `dualLightModeControl` | `exclusive` | Dual-light layouts: `exclusive` (Down/Up/Both), `channels` (Down+Up), or `both-up` (one Both/Up switch). |
+| `dualLightModeControl` | `exclusive` | Dual-light layouts: `exclusive` (Down/Up/Both), `channels` (Down+Up), or `both-up` (one Both/Up switch), or `both-only` (Both with no mode switches). |
 | `enableIncrementalButtons` | `false` | Adds momentary +/- buttons for brightness and fan speed. |
 
 ### Advanced Fields

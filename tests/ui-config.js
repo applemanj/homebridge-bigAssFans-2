@@ -337,12 +337,22 @@ test("Both / Up single-switch mode survives Save and reopening", async () => {
   assert.equal(reopened.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]').value, "both-up");
 });
 
+test("Both only without mode switches survives Save and reopening", async () => {
+  const page = await openPage();
+  page.edit(0, "dualLightModeControl", "both-only");
+  await page.settle();
+  await page.hostSave();
+  assert.equal(page.host.saved[0].fans[0].dualLightModeControl, "both-only");
+  const reopened = await openPage(page.host.saved);
+  assert.equal(reopened.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]').value, "both-only");
+});
+
 test("legacy dual-light settings migrate to exclusive with only supported layouts offered", async () => {
   const old = clone(config);
   old.fans[0].dualLightModeControl = "legacy";
   const page = await openPage([old]);
   const select = page.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]');
-  assert.deepEqual(select.children.map((option) => option.value), ["exclusive", "channels", "both-up"]);
+  assert.deepEqual(select.children.map((option) => option.value), ["exclusive", "channels", "both-up", "both-only"]);
   assert.equal(select.value, "exclusive");
   await page.hostSave();
   assert.equal(page.host.saved[0].fans[0].dualLightModeControl, "exclusive");

@@ -10,9 +10,13 @@ Choose **Dual-light mode controls** in the plugin settings:
 - **Down + Up — combine switches** (`channels`): Down on / Up off selects Down; Up on / Down off selects Up; both on selects Both. Turning off the last selected switch turns on the other switch, so a valid mode always remains selected.
 - **Both / Up — single switch** (`both-up`): one **Both Lights** switch. On selects Both; Off selects Up only. The switch retains the selected mode while the light is off. Both restores Down/Both's remembered brightness and Up restores Up's. There is no Down-only selector in this layout. Changes made in the BAF app or with the remote are still honored, including Down-only; select Both Lights on or off to return to Both or Up.
 
+- **Both only — no mode switches** (`both-only`): exposes the White Ambiance tile without a Light Mode accessory. Every HomeKit white-light command selects Both before applying power, brightness or color temperature. It uses Down/Both's brightness memory. Selecting this option removes existing mode switches; changing back recreates them. White-light and night-light accessory identities stay the same.
+
+Both-only does not force a mode on startup or in response to BAF app/remote changes. External state is still displayed accurately; the next HomeKit white-light command selects Both again. Changing temperature while off keeps the light off, and zero brightness retains the usual Off/restore behavior.
+
 The legacy separate-dimmer option has been removed for dual-light fans. Existing `legacy` configurations use Down / Up / Both instead, and the settings UI saves the replacement value. Single-light fans keep their existing dimmer and accessory identity. For dual-light fans migrating from legacy controls, HomeKit scenes referencing the replaced dimmers may need updating.
 
-In all coordinated layouts, mode switches select which lights the White Light dimmer controls. They do not control power. Turning White Light off or dimming it to zero retains the selected mode. Changing modes while off leaves the lights off; turning White Light on restores the selected mode's brightness. Mode changes while off do not send a brightness command, and off-state reports do not overwrite an existing remembered brightness.
+In layouts with mode switches, those switches select which lights the White Light dimmer controls. They do not control power. Turning White Light off or dimming it to zero retains the selected mode. Changing modes while off leaves the lights off; turning White Light on restores the selected mode's brightness. Mode changes while off do not send a brightness command, and off-state reports do not overwrite an existing remembered brightness.
 
 Down and Up remember separate brightness levels. Entering Both restores Down's remembered level. Dimming in Both changes the shared output and Down's memory, leaving Up's memory alone. Memory is kept per accessory in Homebridge's cache and survives restarts. Until an individual mode has been used, it inherits the current level. Removing the accessory/cache also removes its brightness memory.
 
@@ -91,7 +95,7 @@ Dual-light fans expose the following accessories through the same Homebridge bri
 - The original Fan accessory, retaining its fan controls and optional sensors/switches.
 - White Ambiance: one white-light dimmer with On/Off and supported color temperature.
 - LED Back Light: one color-light accessory, only when supported and enabled in configuration.
-- Light Mode: the configured Down/Up/Both or Down+Up switches together on one accessory. Both/Up has just one switch.
+- Light Mode: the configured Down/Up/Both or Down+Up switches together on one accessory. Both/Up has just one switch; Both-only creates no Light Mode accessory.
 
 All tiles share one fan connection and lighting coordinator. Mode selection, brightness memory, BAF app feedback, and standby behavior are unchanged. Apple Home controls the visual presentation of each accessory; the mode accessory can be shown together without grouping it with the fan or lights.
 

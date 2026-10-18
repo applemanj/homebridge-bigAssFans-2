@@ -156,12 +156,13 @@
             },
             "dualLightModeControl": {
               "title": "Dual-light mode controls",
-              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off.",
+              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off. With both-only, no mode switches are created and HomeKit white-light commands select Both.",
               "type": "string",
               "enum": [
                 "exclusive",
                 "channels",
-                "both-up"
+                "both-up",
+                "both-only"
               ],
               "default": "exclusive"
             },

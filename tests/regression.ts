@@ -1381,6 +1381,47 @@ async function testNightLightFeedbackTimeoutAndDisconnect() {
   }
 }
 
+function testBothOnlyAccessoryLayout() {
+  for (const initial of ['channels', 'both-only'] as const) {
+    const { state, accessory } = createDualLightTestState();
+    accessory.context.device = { name: 'Test Fan', mac: state.MAC };
+    const cached = [accessory] as unknown as PlatformAccessory<BigAssFansAccessoryContext>[];
+    const removed: PlatformAccessory[] = [];
+    const api = {
+      platformAccessory: FakeAccessory,
+      hap: { Service: state.platform.Service, Characteristic: state.platform.Characteristic, uuid: { generate: (s: string) => s } },
+      registerPlatformAccessories: () => undefined,
+      unregisterPlatformAccessories: (_p: string, _n: string, items: PlatformAccessory[]) => removed.push(...items),
+      updatePlatformAccessories: () => undefined,
+    } as unknown as API;
+    Object.assign(state.platform, { layout: new AccessoryLayout(api, cached, 'plugin', 'platform') });
+    state.dualLightModeControl = initial;
+    __test__.makeServices(state);
+    const white = state.whiteLightService;
+    const night = state.standbyLEDBulbService;
+    const coordinator = state.whiteLight;
+    state.dualLightModeControl = 'both-only';
+    __test__.makeServices(state);
+    assert.equal(state.whiteLightService, white);
+    assert.equal(state.standbyLEDBulbService, night);
+    assert.equal(state.whiteLight, coordinator);
+    assert.equal(coordinator?.bothOnly, true);
+    assert.equal(state.lightModeServices.size, 0);
+    assert.equal(state.lightTiles.modes, undefined);
+    assert.equal(cached.length, 3, 'Only the original fan, white light and night light accessories remain');
+    assert.ok(cached.every(owner => owner.services.every(service => !service.subtype?.startsWith('white-mode-'))));
+    assert.equal(removed.length, initial === 'channels' ? 1 : 0);
+    state.dualLightModeControl = 'exclusive';
+    __test__.makeServices(state);
+    assert.equal(state.whiteLight?.bothOnly, false);
+    assert.equal(state.lightModeServices.size, 3);
+    assert.equal(cached.length, 4);
+    assert.equal(state.whiteLightService, white);
+    state.whiteLight?.disconnect();
+    state.nightLight?.disconnect();
+  }
+}
+
 function testSeparateLightAccessories() {
   const { state, accessory } = createDualLightTestState();
   accessory.context.device = { name: 'Test Fan', mac: state.MAC };
@@ -1445,9 +1486,11 @@ function testSeparateLightAccessories() {
 
 async function main() {
   testSeparateLightAccessories();
+  testBothOnlyAccessoryLayout();
+  assert.equal(normalizeDualLightModeControl('both-only'), 'both-only');
   assert.equal(normalizeDualLightModeControl('legacy'), 'exclusive');
   assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');
-  for (const mode of ['exclusive', 'channels', 'both-up', 'legacy']) {
+  for (const mode of ['exclusive', 'channels', 'both-up', 'both-only', 'legacy']) {
     for (const uplight of [false, true]) {
       const { state, accessory } = createDualLightTestState();
       state.capabilities.hasLight = !uplight;

@@ -58,7 +58,7 @@ export class BigAssFans_i6PlatformAccessory {
   public whiteLight?: DualLightCoordinator;
   public whiteLightService?: Service;
   public lightModeServices: Map<number, Service> = new Map();
-  public dualLightModeControl: 'exclusive' | 'channels' | 'both-up' = 'exclusive';
+  public dualLightModeControl: 'exclusive' | 'channels' | 'both-up' | 'both-only' = 'exclusive';
   public whiteLightReport: Partial<WhiteLightState> = {};
   public nightLight?: NightLightCoordinator;
   public nightLightReport?: NightLightState;
@@ -1182,6 +1182,7 @@ function makeCoordinatedLights(pA: BAF) {
     );
     sendStateRefreshRequest(pA);
   }
+  pA.whiteLight.bothOnly = pA.dualLightModeControl === 'both-only';
   pA.whiteLightService.getCharacteristic(c.On)
     .onGet(() => {
       const state = requireWhiteLight(pA).view;
@@ -1208,7 +1209,11 @@ function makeCoordinatedLights(pA: BAF) {
     pA.whiteLightService.removeCharacteristic(pA.whiteLightService.getCharacteristic(c.ColorTemperature));
   }
   pA.lightModeServices.clear();
-  const modes = pA.dualLightModeControl === 'both-up' ? [0] : pA.dualLightModeControl === 'channels' ? [1, 2] : [1, 2, 0];
+  if (pA.dualLightModeControl === 'both-only') {
+    clearLightModeNotifications(pA);
+  }
+  const modes = pA.dualLightModeControl === 'both-only' ? [] : pA.dualLightModeControl === 'both-up' ? [0]
+    : pA.dualLightModeControl === 'channels' ? [1, 2] : [1, 2, 0];
   for (const mode of [0, 1, 2]) {
     const subtype = 'white-mode-' + mode;
     if (!modes.includes(mode)) {
@@ -1244,8 +1249,10 @@ function makeServices(pA: BAF) {
   pA.lightTiles = {};
   if (coordinated && pA.platform.layout) {
     pA.lightTiles.white = pA.platform.layout.owner(pA.accessory, 'white', 'White Ambiance', ['white-light']);
-    pA.lightTiles.modes = pA.platform.layout.owner(pA.accessory, 'modes', 'Light Mode',
-      ['white-mode-0', 'white-mode-1', 'white-mode-2']);
+    if (pA.dualLightModeControl !== 'both-only') {
+      pA.lightTiles.modes = pA.platform.layout.owner(pA.accessory, 'modes', 'Light Mode',
+        ['white-mode-0', 'white-mode-1', 'white-mode-2']);
+    }
     if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
       pA.lightTiles.night = pA.platform.layout.owner(pA.accessory, 'night', 'LED Back Light', ['light-3']);
     }
