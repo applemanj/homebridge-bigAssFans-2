@@ -108,7 +108,7 @@ export function applyCapabilityConfig(
   const effective = { ...capabilities };
 
   if (config.downlightEquipped === undefined || config.downlightEquipped === 'auto') {
-    if (!effective.hasLight && effective.hasColorTempControl) {
+    if (!effective.hasLight && !effective.hasUplight && effective.hasColorTempControl) {
       effective.hasLight = true;
     }
   } else {
@@ -303,6 +303,60 @@ export function parseCapabilitiesFromSlipData(data: Buffer): Capabilities | unde
   return undefined;
 }
 
+/** Read the fan's own MAC only: Root.root2.query_result.properties.mac_address.
+ * Do not mistake a remote's MAC or an arbitrary nested string for the fan identity.
+ */
+export function parseMacFromSlipData(data: Buffer): string | undefined {
+  const visit = (message: Buffer, path: number[]): string | undefined => {
+    let b = message;
+    while (b.length > 0) {
+      const key = readVarintSafe(b);
+      if (!key) {
+        return undefined;
+      }
+      b = key.rest;
+      const type = key.value & 7;
+      const field = key.value >>> 3;
+      if (type === 2 && field === path[0]) {
+        const length = readVarintSafe(b);
+        if (!length || length.value > length.rest.length) {
+          return undefined;
+        }
+        const body = length.rest.subarray(0, length.value);
+        b = length.rest.subarray(length.value);
+        if (path.length > 1) {
+          const found = visit(body, path.slice(1));
+          if (found) {
+            return found;
+          }
+        } else {
+          const value = body.toString('utf8').trim();
+          if (/^(?:[0-9a-f]{12}|(?:[0-9a-f]{2}:){5}[0-9a-f]{2}|(?:[0-9a-f]{2}-){5}[0-9a-f]{2})$/i.test(value)) {
+            const hex = value.replace(/[:-]/g, '').toUpperCase();
+            if (hex !== '000000000000' && hex !== 'FFFFFFFFFFFF') {
+              return hex.match(/../g)!.join(':');
+            }
+          }
+        }
+      } else {
+        const skipped = skipField(b, type);
+        if (!skipped) {
+          return undefined;
+        }
+        b = skipped;
+      }
+    }
+    return undefined;
+  };
+  for (const frame of extractSlipFrames(data)) {
+    const mac = visit(frame, [2, 4, 2, 8]);
+    if (mac) {
+      return mac;
+    }
+  }
+  return undefined;
+}
+
 function addMissingCapabilitySuggestion(
   suggestions: CapabilityConfigSuggestion[],
   condition: boolean,
@@ -488,3 +542,4 @@ function unstuff(data: Buffer): Buffer {
 
   return Buffer.from(unstuffedData);
 }
+

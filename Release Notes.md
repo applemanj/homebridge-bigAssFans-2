@@ -462,3 +462,4 @@
 ---
 
 *Release notes for the original homebridge-i6-bigassfans plugin (v0.6.1 and earlier) can be found in the [upstream repository](https://github.com/oogje/homebridge-i6-bigAssFans/blob/main/Release%20Notes.md).*
+

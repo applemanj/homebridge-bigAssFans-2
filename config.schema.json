@@ -40,9 +40,8 @@
             },
             "ip": {
               "title": "Fan IP Address Or Hostname",
-              "description": "IP address, DNS hostname, or mDNS .local hostname for the fan. Leave blank to auto-discover via mDNS using the MAC address.",
-              "type": "string",
-              "minLength": 1
+              "description": "IP address or hostname. Leave blank to discover the fan via mDNS using its MAC address.",
+              "type": "string"
             },
             "mac": {
               "title": "MAC Address",
@@ -173,12 +172,6 @@
               "type": "boolean",
               "default": false
             },
-            "bothlightsControl": {
-              "title": "Both Lights Control",
-              "description": "Add a single light control that turns the downlight and uplight on together and sets both to the same brightness. Only applies to fans with both a downlight and an uplight.",
-              "type": "boolean",
-              "default": false
-            },
             "enableIncrementalButtons": {
               "title": "Enable +/- Buttons",
               "description": "Add momentary +/- buttons for brightness and fan speed.",
@@ -195,6 +188,23 @@
             "enableDebugPort": {
               "title": "Enable Debug Port",
               "description": "Enable a localhost-only TCP debug port for runtime debug level changes and detailed timing diagnostics. Leave off for normal use.",
+              "type": "boolean",
+              "default": false
+            },
+            "dualLightModeControl": {
+              "title": "Dual-light mode controls",
+              "description": "For fans with both white lights. Mode switches retain selection independently of light power. With channels, deselecting the last switch selects the other. With both-up, one switch selects Both when on and Up when off.",
+              "type": "string",
+              "enum": [
+                "exclusive",
+                "channels",
+                "both-up"
+              ],
+              "default": "exclusive"
+            },
+            "showWhooshSwitch": {
+              "title": "Whoosh switch",
+              "description": "Expose a named Whoosh switch alongside the fan tile's Swing control.",
               "type": "boolean",
               "default": false
             }

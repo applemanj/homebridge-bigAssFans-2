@@ -32,8 +32,8 @@ See [Release Notes.md](https://github.com/applemanj/homebridge-bigAssFans-2/blob
 
 **v1.2.0**
 
-- Added `bothlightsControl`: a single light service that turns the downlight and uplight on together and sets both to the same brightness.
-- Fans can now be discovered automatically via mDNS: leave `ip` blank and the plugin resolves the fan by its MAC address at startup.
+- Coordinated dual white lights with one White Ambiance dimmer, selectable Down/Up/Both modes, per-mode brightness memory, and separate light/mode accessories.
+- Includes upstream v1.2.0 mDNS discovery: leave `ip` blank and the plugin resolves the fan by its MAC address at startup.
 - The custom UI Test Connection also resolves fans via mDNS when no ip is configured.
 - Documented the firmware 3.0+ requirement and added a Siri fan-speed tip.
 
@@ -171,7 +171,7 @@ Common optional choices:
 | `showFanOccupancySensor` | `false` | Exposes fan occupancy when supported by the fan. |
 | `showLightOccupancySensor` | `false` | Exposes light occupancy when supported by the fan. |
 | `showStandbyLED` | `false` | Exposes night light / standby LED controls when supported by the fan. Hidden if `noLights` is enabled. |
-| `bothlightsControl` | `false` | Adds a single light that turns the downlight and uplight on together at the same brightness. Only applies when the fan has both a downlight and an uplight. |
+| `dualLightModeControl` | `exclusive` | Dual-light layouts: `exclusive` (Down/Up/Both), `channels` (Down+Up), or `both-up` (one Both/Up switch). |
 | `enableIncrementalButtons` | `false` | Adds momentary +/- buttons for brightness and fan speed. |
 
 ### Advanced Fields
@@ -248,3 +248,12 @@ Special thanks to:
 ## License
 
 MIT
+
+
+## Coordinated lights and fan feedback
+
+See [dual-light controls](docs/dual-light-controls.md) for mode selection, brightness memory, night-light controls, capability testing, and migration to separate HomeKit accessories. Single-light fans retain their existing accessory layout. Existing upstream Both Lights services are replaced by the coordinated controls.
+
+See [fan speed controls](docs/fan-speed-controls.md) for saved-speed wake behavior, percentage settling, and the experimental HomeKit slider notifications. These fan changes apply to both single-light and dual-light fans.
+
+During setup, enter a name and either an IP address or a MAC address, then Test Connection before selecting options. Testing by IP can fill an empty MAC. Testing by MAC uses mDNS to resolve the address and then queries capabilities. Saving requires a MAC; a blank IP keeps automatic discovery enabled. Discovery runs at startup and during connection testing, not continuously after an address change. Fans with explicit addresses start without waiting for discovery.

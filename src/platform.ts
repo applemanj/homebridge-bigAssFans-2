@@ -1,5 +1,7 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, Service, Characteristic } from 'homebridge';
-import { Bonjour } from 'bonjour-service';
+
+import { resolveFanIpViaMdns } from './discovery';
+import { AccessoryLayout } from './accessoryLayout';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { BigAssFans_i6PlatformAccessory } from './platformAccessory';
@@ -11,6 +13,7 @@ import type { BigAssFansAccessoryContext, BigAssFansDeviceConfig, BigAssFansPlat
  * Parses the user config and discovers/registers fan accessories with Homebridge.
  */
 export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
+  public readonly layout: AccessoryLayout;
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
   public readonly accessories: PlatformAccessory<BigAssFansAccessoryContext>[] = [];
@@ -20,6 +23,7 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
     public readonly config: BigAssFansPlatformConfig,
     public readonly api: API,
   ) {
+    this.layout = new AccessoryLayout(api, this.accessories, PLUGIN_NAME, PLATFORM_NAME);
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
     this.log.debug('Finished initializing platform');
@@ -41,7 +45,6 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
 
   /**
    * Reads fan entries from config and creates/restores accessories for each one.
-   * Fans without an explicit ip are resolved via mDNS before setup.
    */
   initDevices() {
     this.log.info('Init - initializing devices');
@@ -53,26 +56,21 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
           if (fan.mac) {
             configuredUUIDs.add(this.api.hap.uuid.generate(fan.mac));
           }
-        }
-      }
-
-      const pendingFans = this.config.fans.filter(fan => fan && fan.mac && !fan.ip);
-
-      if (pendingFans.length > 0) {
-        this.resolveFansViaMdns(pendingFans).then(() => {
-          for (const fan of this.config.fans!) {
-            if (fan) {
-              this.setupFan(fan);
-            }
+          if (fan.ip) {
+            this.setupFan(fan);
+          } else if (fan.name && fan.mac) {
+            // Known-address fans start immediately; unresolved child caches remain intact.
+            void resolveFanIpViaMdns(fan.mac, 10000).then(ip => {
+              if (ip) {
+                this.log.info('mDNS: found %s at %s', fan.name, ip);
+                this.setupFan({ ...fan, ip });
+              } else {
+                this.log.error('mDNS could not find %s. Check the MAC/network or enter an IP address.', fan.name);
+              }
+            });
+          } else {
+            this.setupFan(fan);
           }
-          this.removeStaleAccessories(configuredUUIDs);
-        });
-        return;
-      }
-
-      for (const fan of this.config.fans) {
-        if (fan) {
-          this.setupFan(fan);
         }
       }
     } else if (this.config.fans) {
@@ -86,76 +84,14 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
       this.log.info('-------------------------------------------');
     }
 
-    this.removeStaleAccessories(configuredUUIDs);
-  }
-
-  /**
-   * Browses _http._tcp over mDNS and fills in the ip for each pending fan by
-   * matching the TXT record mac (case-insensitive) against the configured mac.
-   * Browsing stops as soon as every pending fan has been resolved.
-   */
-  private async resolveFansViaMdns(pendingFans: BigAssFansDeviceConfig[]): Promise<void> {
-    const bonjour = new Bonjour();
-    const browser = bonjour.find({ type: 'http' });
-    const unresolved = new Map<string, BigAssFansDeviceConfig>();
-    for (const fan of pendingFans) {
-      unresolved.set(fan.mac.toLowerCase(), fan);
-    }
-
-    this.log.info('Discovering fans via mDNS (%d fan(s) without ip)...', unresolved.size);
-
-    return new Promise<void>(resolve => {
-      const timeout = setTimeout(() => {
-        browser.stop();
-        bonjour.destroy();
-        this.logUnresolvedFans(unresolved);
-        resolve();
-      }, 10000);
-
-      browser.on('up', (service: { txt?: Record<string, string>; addresses?: string[] }) => {
-        const txtMac = service.txt?.mac?.toLowerCase();
-        if (!txtMac || !unresolved.has(txtMac)) {
-          return;
-        }
-
-        const address = service.addresses?.find(addr => addr.includes('.')) ?? service.addresses?.[0];
-        if (!address) {
-          return;
-        }
-
-        const fan = unresolved.get(txtMac)!;
-        fan.ip = address;
-        unresolved.delete(txtMac);
-        this.log.info('mDNS: found %s at %s', fan.name, address);
-
-        if (unresolved.size === 0) {
-          clearTimeout(timeout);
-          browser.stop();
-          bonjour.destroy();
-          resolve();
-        }
-      });
-    });
-  }
-
-  private logUnresolvedFans(unresolved: Map<string, BigAssFansDeviceConfig>) {
-    for (const fan of unresolved.values()) {
-      this.log.error(
-        'mDNS: could not find %s (mac %s). Ensure the fan is powered on and on the same network, or set its ip manually.',
-        fan.name,
-        fan.mac,
-      );
-    }
-  }
-
-  private removeStaleAccessories(configuredUUIDs: Set<string>) {
-    const staleAccessories = this.accessories.filter(accessory => !configuredUUIDs.has(accessory.UUID));
+    const staleAccessories = this.accessories.filter(accessory => !configuredUUIDs.has(accessory.context.parentUUID ?? accessory.UUID));
     if (staleAccessories.length > 0) {
       staleAccessories.forEach(accessory => {
         this.log.info('Removing stale accessory from cache:', accessory.displayName);
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, staleAccessories);
-      this.accessories.splice(0, this.accessories.length, ...this.accessories.filter(accessory => configuredUUIDs.has(accessory.UUID)));
+      const retained = this.accessories.filter(accessory => configuredUUIDs.has(accessory.context.parentUUID ?? accessory.UUID));
+      this.accessories.splice(0, this.accessories.length, ...retained);
     }
   }
 
@@ -169,7 +105,7 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
         throw new Error('"name" is required but not defined!');
       }
       if (!fan.ip) {
-        throw new Error(`"ip" could not be determined for ${fan.name}! (mDNS discovery failed and no ip is configured)`);
+        throw new Error(`"ip" is required but not defined for ${fan.name}!`);
       }
       if (!fan.mac) {
         throw new Error(`"mac" is required but not defined for ${fan.name}!`);
@@ -198,9 +134,11 @@ export class BigAssFans_i6Platform implements DynamicPlatformPlugin {
 
       const accessory = new this.api.platformAccessory<BigAssFansAccessoryContext>(fan.name, uuid);
       accessory.context.device = fan;
+      this.accessories.push(accessory);
 
       new BigAssFans_i6PlatformAccessory(this, accessory);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     }
   }
 }
+

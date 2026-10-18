@@ -1,3 +1,4 @@
+import type { AccessoryLayout, LightTile } from './accessoryLayout';
 import type { API, Characteristic, Logger, PlatformConfig, Service } from 'homebridge';
 
 export type DebugLevelConfigEntry = [string, string | number];
@@ -9,6 +10,7 @@ export interface BigAssFansDeviceConfig {
   mac: string;
   debugLevels?: DebugLevelConfigEntry[];
   noLights?: boolean;
+  dualLightModeControl?: 'exclusive' | 'channels' | 'both-up';
   downlightEquipped?: LightDetectionOverride;
   uplightEquipped?: LightDetectionOverride;
   whoosh?: boolean;
@@ -28,7 +30,6 @@ export interface BigAssFansDeviceConfig {
   showFanOccupancySensor?: boolean;
   showLightOccupancySensor?: boolean;
   showStandbyLED?: boolean;
-  bothlightsControl?: boolean;
   enableDebugPort?: boolean;
   showTemperature?: boolean;
   showHumidity?: boolean;
@@ -42,11 +43,18 @@ export interface BigAssFansPlatformConfig extends PlatformConfig {
 
 export interface BigAssFansAccessoryContext {
   device: BigAssFansDeviceConfig;
+  parentUUID?: string;
+  lightTile?: LightTile;
+  whiteLightMemory?: { down?: number; up?: number };
+  nightLightBrightness?: number;
+  fanSpeedMemory?: number;
 }
 
 export interface BigAssFansPlatformContext {
+  readonly layout?: AccessoryLayout;
   readonly Service: typeof Service;
   readonly Characteristic: typeof Characteristic;
   readonly log: Logger;
   readonly api: API;
 }
+

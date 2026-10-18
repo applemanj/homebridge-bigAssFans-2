@@ -1,8 +1,9 @@
+import { resolveFanIpViaMdns } from '../discovery';
 import * as net from 'net';
-import { Bonjour } from 'bonjour-service';
 import {
   applyCapabilityConfig,
   parseCapabilitiesFromSlipData,
+  parseMacFromSlipData,
   suggestCapabilityConfig,
   summarizeCapabilityExposure,
   type Capabilities,
@@ -48,6 +49,8 @@ interface ConnectionDiagnostic {
   latencyMs?: number;
   bytesReceived?: number;
   errorCode?: string;
+  mac?: string;
+  resolvedIp?: string;
   capabilities?: Capabilities;
   capabilitySummary?: CapabilityExposureSummary;
   capabilitySuggestions?: CapabilityConfigSuggestion[];
@@ -58,6 +61,7 @@ const FAN_PORT = 31415;
 const DEFAULT_TIMEOUT_MS = 4500;
 const CAPABILITY_QUERY = [0x12, 0x04, 0x1a, 0x02, 0x08, 0x06];
 const STATE_REFRESH = [0x12, 0x02, 0x1a, 0x00];
+const NETWORK_QUERY = [0x12, 0x04, 0x1a, 0x02, 0x08, 0x04];
 const START = 0xc0;
 const ESC = 0xdb;
 const START_STUFF = 0xdc;
@@ -127,72 +131,29 @@ function validateFan(fan: NormalizedFanConfig): string | undefined {
   if (!fan.name) {
     return 'Fan name is required.';
   }
-  if (!/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(fan.mac)) {
-    return 'Fan MAC address must use the format 20:F8:5E:00:00:00.';
+  if (!fan.ip && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(fan.mac)) {
+    return 'Enter an IP address or a valid MAC address for network discovery.';
   }
+  // The MAC identifies the saved HomeKit accessory; it is not needed to probe an IP.
   return undefined;
-}
-
-/**
- * Resolves a fan ip via mDNS by matching the TXT record mac (case-insensitive)
- * against the configured mac. Returns undefined when no match is found.
- */
-function resolveFanIpViaMdns(mac: string, timeoutMs = 5000): Promise<string | undefined> {
-  const bonjour = new Bonjour();
-  const browser = bonjour.find({ type: 'http' });
-  const wanted = mac.toLowerCase();
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      browser.stop();
-      bonjour.destroy();
-      resolve(undefined);
-    }, timeoutMs);
-
-    browser.on('up', (service: { txt?: Record<string, string>; addresses?: string[] }) => {
-      if (service.txt?.mac?.toLowerCase() !== wanted) {
-        return;
-      }
-
-      const address = service.addresses?.find((addr) => addr.includes('.')) ?? service.addresses?.[0];
-      if (!address) {
-        return;
-      }
-
-      clearTimeout(timeout);
-      browser.stop();
-      bonjour.destroy();
-      resolve(address);
-    });
-  });
 }
 
 async function testFanConnection(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
   const validationError = validateFan(fan);
   if (validationError) {
-    return {
-      ok: false,
-      state: 'missing-config',
-      message: validationError,
-      checkedAt: new Date().toISOString(),
-    };
+    return { ok: false, state: 'missing-config', message: validationError, checkedAt: new Date().toISOString() };
   }
-
-  if (!fan.ip) {
-    const discoveredIp = await resolveFanIpViaMdns(fan.mac);
-    if (!discoveredIp) {
-      return {
-        ok: false,
-        state: 'missing-config',
-        message: 'No ip is configured and mDNS discovery could not find a fan with that MAC address. ' +
-          'Check that the fan is powered on and on the same network, or set its ip manually.',
-        checkedAt: new Date().toISOString(),
-      };
-    }
-    fan = { ...fan, ip: discoveredIp };
+  if (fan.ip) {
+    return testFanConnectionWithIp(fan, timeoutMs);
   }
-
-  return testFanConnectionWithIp(fan, timeoutMs);
+  const ip = await resolveFanIpViaMdns(fan.mac);
+  if (!ip) {
+    return { ok: false, state: 'missing-config',
+      message: 'mDNS could not find this MAC address. Check the fan/network or enter its IP address.',
+      checkedAt: new Date().toISOString() };
+  }
+  const result = await testFanConnectionWithIp({ ...fan, ip }, timeoutMs);
+  return { ...result, resolvedIp: ip };
 }
 
 function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ConnectionDiagnostic> {
@@ -213,7 +174,6 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
     let bytesReceived = 0;
     let receivedData = Buffer.alloc(0);
     let timeout: ReturnType<typeof setTimeout>;
-    let responseGraceTimeout: ReturnType<typeof setTimeout> | undefined;
     const socket = net.connect({ port: FAN_PORT, host: fan.ip });
 
     const finish = (result: Omit<ConnectionDiagnostic, 'checkedAt'>) => {
@@ -222,9 +182,6 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
       }
       settled = true;
       clearTimeout(timeout);
-      if (responseGraceTimeout !== undefined) {
-        clearTimeout(responseGraceTimeout);
-      }
       socket.removeAllListeners();
       socket.destroy();
       resolve({
@@ -256,6 +213,7 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
       socket.setKeepAlive(true);
       socket.write(frameMessage(CAPABILITY_QUERY));
       socket.write(frameMessage(STATE_REFRESH));
+      socket.write(frameMessage(NETWORK_QUERY));
     });
 
     socket.on('data', (data: Buffer) => {
@@ -263,7 +221,7 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
       receivedData = Buffer.concat([receivedData, data]);
       const capabilityDetails = getCapabilityDetails(receivedData, fan);
 
-      if (capabilityDetails.capabilities) {
+      if (capabilityDetails.capabilities && capabilityDetails.mac) {
         finish({
           ok: true,
           state: 'responded',
@@ -275,20 +233,8 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
         return;
       }
 
-      if (responseGraceTimeout !== undefined) {
-        clearTimeout(responseGraceTimeout);
-      }
-
-      responseGraceTimeout = setTimeout(() => {
-        finish({
-          ok: true,
-          state: 'responded',
-          message: `Fan responded on ${fan.ip}:${FAN_PORT}, but capability details were not present in the diagnostic response.`,
-          latencyMs: Date.now() - startedAt,
-          bytesReceived,
-          ...getCapabilityDetails(receivedData, fan),
-        });
-      }, 300);
+      // Capabilities and identity can arrive in separate TCP messages. Keep
+      // collecting until both arrive, the socket closes, or the probe times out.
     });
 
     socket.on('timeout', () => {
@@ -343,10 +289,12 @@ function testFanConnectionWithIp(fan: NormalizedFanConfig, timeoutMs = DEFAULT_T
 function getCapabilityDetails(
   data: Buffer,
   fan: NormalizedFanConfig,
-): Pick<ConnectionDiagnostic, 'capabilities' | 'capabilitySummary' | 'capabilitySuggestions' | 'capabilityMessage'> {
+): Pick<ConnectionDiagnostic, 'mac' | 'capabilities' | 'capabilitySummary' | 'capabilitySuggestions' | 'capabilityMessage'> {
+  const mac = parseMacFromSlipData(data);
   const rawCapabilities = parseCapabilitiesFromSlipData(data);
   if (!rawCapabilities) {
     return {
+      mac,
       capabilityMessage: 'Capability details were not reported in this diagnostic response.',
     };
   }
@@ -359,6 +307,7 @@ function getCapabilityDetails(
     : 'none';
 
   return {
+    mac,
     capabilities,
     capabilitySummary,
     capabilitySuggestions,

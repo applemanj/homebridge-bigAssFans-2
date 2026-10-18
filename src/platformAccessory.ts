@@ -1,7 +1,10 @@
 /* eslint-disable no-multi-spaces */
 
+import type { LightTile } from './accessoryLayout';
 import * as net from 'net';
-import { Service, PlatformAccessory, CharacteristicValue, type WithUUID } from 'homebridge';
+import type { Service, PlatformAccessory, CharacteristicValue, WithUUID } from 'homebridge';
+import { DualLightCoordinator, lightCommand, normalizeDualLightModeControl, type WhiteLightState } from './lighting';
+import { emptyNightLightState, NightLightCoordinator, nightLightColor, nightLightCommand, type NightLightState } from './nightlight';
 import type { BigAssFansAccessoryContext, BigAssFansPlatformContext, LightDetectionOverride } from './types';
 import {
   capabilityKeys,
@@ -12,7 +15,7 @@ import {
 
 const MAXFANSPEED = 7;
 const ROTATION_SPEED_DEBOUNCE_MS = 125;
-const ROTATION_SPEED_SETTLE_MS = 2000;
+const ROTATION_SPEED_DISPLAY_MS = 1500;
 const FAN_ACTIVE_DEDUP_MS = 500;
 
 const ONEBYTEHEADER = [0x12, 0x07, 0x12, 0x05, 0x1a, 0x03];
@@ -51,6 +54,14 @@ function normalizeLightDetectionOverride(value: LightDetectionOverride | undefin
  * fan's proprietary protobuf-over-SLIP protocol on port 31415.
  */
 export class BigAssFans_i6PlatformAccessory {
+  public lightTiles: Partial<Record<LightTile, PlatformAccessory<BigAssFansAccessoryContext>>> = {};
+  public whiteLight?: DualLightCoordinator;
+  public whiteLightService?: Service;
+  public lightModeServices: Map<number, Service> = new Map();
+  public dualLightModeControl: 'exclusive' | 'channels' | 'both-up' = 'exclusive';
+  public whiteLightReport: Partial<WhiteLightState> = {};
+  public nightLight?: NightLightCoordinator;
+  public nightLightReport?: NightLightState;
   public capabilitiesEstablished = false;
   public capabilities: Capabilities = createDefaultCapabilities();
 
@@ -69,7 +80,6 @@ export class BigAssFans_i6PlatformAccessory {
   public lightOccupancySensorService!: Service;
   public standbyLEDEnabledSwitchService!: Service;
   public standbyLEDBulbService!: Service;
-  public bothlightsBulbService!: Service;
   public downlightDarkenService!: Service;
   public downlightLightenService!: Service;
   public fanSlowerService!: Service;
@@ -126,7 +136,6 @@ export class BigAssFans_i6PlatformAccessory {
   public showLightOccupancySensor = false;
   public showStandbyLED = false;
   public standbyLEDEnabledSwitchOn = false;
-  public bothlightsControl = false;
 
   public downlightEquipped: boolean | undefined = undefined;
   public uplightEquipped: boolean | undefined = undefined;
@@ -176,6 +185,13 @@ export class BigAssFans_i6PlatformAccessory {
   public lastDebugMessage = '';
   public lastDebugMessageTag = '';
   public messagesLogged: Set<string> = new Set();
+  public fanWakeAt?: number;
+  public rememberedFanSpeed?: number;
+  public displayedFanPercent?: number;
+  public displayedFanSpeed?: number;
+  public fanDisplayTimer?: ReturnType<typeof setTimeout>;
+  public fanDisplayRepeatTimer?: ReturnType<typeof setTimeout>;
+  public fanRefreshTimer?: ReturnType<typeof setTimeout>;
   public lastRotationSpeedRequestAt = 0;
   public lastRotationSpeedRequestPercent: number | undefined = undefined;
   public lastRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
@@ -188,7 +204,6 @@ export class BigAssFans_i6PlatformAccessory {
   public pendingRotationSpeedRequestPercent: number | undefined = undefined;
   public pendingRotationSpeedRequestDeviceSpeed: number | undefined = undefined;
   public expectedRotationSpeed: number | undefined = undefined;
-  public ignoreUnexpectedRotationSpeedUntil = 0;
   public debugLastFanOccupancyValue = 0;
   public debugLastLightOccupancyValue = 0;
   public uptimeLogged = false;
@@ -204,6 +219,11 @@ export class BigAssFans_i6PlatformAccessory {
     this.IP = device.ip ?? '';
     this.MAC = device.mac;
     this.Name = device.name;
+    this.dualLightModeControl = normalizeDualLightModeControl(device.dualLightModeControl);
+    this.platform.api.on('shutdown', () => {
+      this.whiteLight?.disconnect();
+      this.nightLight?.disconnect();
+    });
 
     // defaults and enumeration of debugging keys
     this.debugLevels['capabilities']      = 0;
@@ -318,10 +338,6 @@ export class BigAssFans_i6PlatformAccessory {
       this.showStandbyLED = true;
     }
 
-    if (device.bothlightsControl) {
-      this.bothlightsControl = true;
-    }
-
     if (device.enableDebugPort) {
       this.enableDebugPort = true;
     }
@@ -352,6 +368,9 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setDownLightOnState(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      return this.whiteLight.setPower(Boolean(value));
+    }
     debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Downlight On -> ' + value);
 
     if (this.bulbCount === 2) {
@@ -375,6 +394,9 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setDownBrightness(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      return this.whiteLight.setBrightness(Number(value));
+    }
     let b: number[];
 
     if (this.bulbCount === 2) {
@@ -469,64 +491,6 @@ export class BigAssFans_i6PlatformAccessory {
     return brightness;
   }
 
-  async setBothLightsOnState(value: CharacteristicValue) {
-    debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Lights On -> ' + value);
-
-    // per upstream issue #30 beta6: explicitly target BOTH before the command,
-    // otherwise the fan applies it to whichever bulb was last selected
-    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
-
-    this.downlightStates.On = value as boolean;
-    this.uplightStates.On = value as boolean;
-    clientWrite(this.client, ONEBYTEHEADER.concat([0xa0, 0x04, (value ? 0x01 : 0x00)]), this);
-  }
-
-  async getBothLightsOnState(): Promise<CharacteristicValue> {
-    const isOn = this.downlightStates.On || this.uplightStates.On;
-    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Lights On -> ' + isOn);
-    return isOn;
-  }
-
-  async setBothBrightness(value: CharacteristicValue) {
-    let b: number[];
-
-    clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_BOTH]), this);
-
-    if (value === 0) {
-      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
-      this.downlightStates.homeShieldUp = true;
-      this.uplightStates.homeShieldUp = true;
-      this.downlightStates.Brightness = 0;
-      this.uplightStates.Brightness = 0;
-      const b1 = ONEBYTEHEADER.concat([0xa8, 0x04, 1]); // this one is for the device's memory
-      const b2 = ONEBYTEHEADER.concat([0xa8, 0x04, 0]); // this one is actually turn off light
-      b = b1.concat(b2);
-    } else if (value === 100 && (this.downlightStates.homeShieldUp || this.uplightStates.homeShieldUp)) {
-      this.downlightStates.homeShieldUp = false;
-      this.uplightStates.homeShieldUp = false;
-      this.downlightStates.Brightness = 1;
-      this.uplightStates.Brightness = 1;
-      b = ONEBYTEHEADER.concat([0xa8, 0x04, 1]);
-    } else {
-      this.downlightStates.homeShieldUp = false;
-      this.uplightStates.homeShieldUp = false;
-      debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Both Brightness -> ' + value);
-      this.downlightStates.Brightness = value as number;
-      this.uplightStates.Brightness = value as number;
-      b = ONEBYTEHEADER.concat([0xa8, 0x04, this.downlightStates.Brightness]);
-    }
-    clientWrite(this.client, b, this);
-  }
-
-  async getBothBrightness(): Promise<CharacteristicValue> {
-    const brightness = Math.max(
-      this.downlightStates.Brightness === 0 ? 1 : this.downlightStates.Brightness,
-      this.uplightStates.Brightness === 0 ? 1 : this.uplightStates.Brightness,
-    );
-    debugLog(this, ['light', 'characteristics'], [2, 4], 'Get Characteristic Both Brightness -> ' + brightness);
-    return brightness;
-  }
-
   async getCurrentTemperature(): Promise<CharacteristicValue> {
     const temperature = this.CurrentTemperature;
     debugLog(this, 'characteristics', 4, 'Get Characteristic CurrentTemperature -> ' + temperature);
@@ -541,6 +505,22 @@ export class BigAssFans_i6PlatformAccessory {
 
   async setFanActive(value: CharacteristicValue) {
     debugLog(this, 'characteristics', 3, 'Set Characteristic Fan Active -> ' + value);
+    const waking = Number(value) === 1 && this.fanStates.Active === 0;
+    if (Number(value) === 0) {
+      this.fanWakeAt = undefined;
+      if (this.pendingRotationSpeedWriteTimeout === undefined) {
+        rememberFanSpeed(this, this.fanStates.RotationSpeed);
+      }
+      clearRotationSpeedDiagnostics(this);
+    } else if (waking) {
+      this.fanWakeAt = Date.now();
+      const speed = savedFanSpeed(this);
+      // Set the remembered speed before power, so firmware cannot resume at maximum.
+      if (this.fanStates.TargetFanState !== 1) {
+        clientWrite(this.client, ONEBYTEHEADER.concat([0xf0, 0x02, speed]), this);
+        this.fanStates.RotationSpeed = speed;
+      }
+    }
     this.fanStates.Active = value as number;
     const payload = ONEBYTEHEADER.concat([0xd8, 0x02, this.fanStates.Active]);
     const now = Date.now();
@@ -619,39 +599,47 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
-    const requestedPercent = value as number;
-    let b: number[];
-    if (requestedPercent === 0) {
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
-      this.fanStates.homeShieldUp = true;
-      this.fanStates.RotationSpeed = 0;
-      const b1 = ONEBYTEHEADER.concat([0xf0, 0x02, 1]); // this one is for the device's memory
-      const b2 = ONEBYTEHEADER.concat([0xf0, 0x02, 0]); // this one will actually stop rotation
-      b = b1.concat(b2);
-    } else if (requestedPercent === 100 && this.fanStates.homeShieldUp) {
-      this.fanStates.homeShieldUp = false;
-      this.fanStates.RotationSpeed = 1;
-      b = ONEBYTEHEADER.concat([0xf0, 0x02, 1]);
-    } else {
-      this.fanStates.homeShieldUp = false;
-      debugLog(this, ['characteristics', 'newcode'], [3, 1], 'Set Characteristic RotationSpeed -> ' + requestedPercent + '%');
-      this.fanStates.RotationSpeed = percentToRotationSpeed(requestedPercent);
-      if (this.fanStates.RotationSpeed > MAXFANSPEED) {
-        this.platform.log.warn(this.Name + ' - fan speed > ' + MAXFANSPEED + ': '
-          + this.fanStates.RotationSpeed + ', setting to ' + MAXFANSPEED);
-        this.fanStates.RotationSpeed = MAXFANSPEED;
-      }
-      b = ONEBYTEHEADER.concat([0xf0, 0x02, this.fanStates.RotationSpeed]);
+    const requestedPercent = Math.max(0, Math.min(100, Number(value)));
+    if (!Number.isFinite(requestedPercent)) {
+      throw new Error('Invalid fan speed');
     }
-    this.expectedRotationSpeed = this.fanStates.RotationSpeed;
-    this.ignoreUnexpectedRotationSpeedUntil = Date.now() + ROTATION_SPEED_SETTLE_MS;
+    if (this.rememberedFanSpeed === undefined) {
+      rememberFanSpeed(this, this.fanStates.RotationSpeed);
+    }
+    const speed = percentToRotationSpeed(requestedPercent);
+    this.fanStates.RotationSpeed = speed;
+    this.expectedRotationSpeed = speed;
     this.pendingRotationSpeedRequestPercent = requestedPercent;
-    this.pendingRotationSpeedRequestDeviceSpeed = this.fanStates.RotationSpeed;
-    scheduleRotationSpeedWrite(this, Buffer.from(b));
+    this.pendingRotationSpeedRequestDeviceSpeed = speed;
+    this.displayedFanPercent = requestedPercent;
+    this.displayedFanSpeed = speed;
+    clearTimeout(this.fanDisplayRepeatTimer);
+    this.fanDisplayRepeatTimer = undefined;
+    clearTimeout(this.fanDisplayTimer);
+    this.fanDisplayTimer = setTimeout(() => {
+      this.fanDisplayTimer = undefined;
+      this.displayedFanPercent = undefined;
+      this.displayedFanSpeed = undefined;
+      const settledSpeed = this.fanStates.RotationSpeed;
+      const characteristic = this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed);
+      characteristic.sendEventNotification(rotationSpeedPercent(settledSpeed));
+      // One bounded repeat for controllers retaining the slider's requested value.
+      this.fanDisplayRepeatTimer = setTimeout(() => {
+        this.fanDisplayRepeatTimer = undefined;
+        if (this.displayedFanPercent === undefined && this.fanStates.RotationSpeed === settledSpeed) {
+          characteristic.sendEventNotification(rotationSpeedPercent(settledSpeed));
+        }
+      }, 1000);
+      this.fanDisplayRepeatTimer.unref?.();
+    }, ROTATION_SPEED_DISPLAY_MS);
+    this.fanDisplayTimer.unref?.();
+    const payload = requestedPercent === 0 ? ONEBYTEHEADER.concat([0xd8, 0x02, 0])
+      : ONEBYTEHEADER.concat([0xf0, 0x02, speed]);
+    scheduleRotationSpeedWrite(this, Buffer.from(payload));
   }
 
   async getRotationSpeed(): Promise<CharacteristicValue> {  // get speed as percentage
-    const rotationPercent = rotationSpeedPercent(this.fanStates.RotationSpeed);
+    const rotationPercent = this.displayedFanPercent ?? rotationSpeedPercent(this.fanStates.RotationSpeed);
     debugLog(this, ['characteristics', 'newcode'], [4, 1], 'Get Characteristic RotationSpeed -> ' + rotationPercent + '%');
     return rotationPercent;
   }
@@ -672,6 +660,9 @@ export class BigAssFans_i6PlatformAccessory {
 
   // Mireds!
   async setDownColorTemperature(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      return this.whiteLight.setTemperature(Number(value));
+    }
     if (this.bulbCount === 2) {
       clientWrite(this.client, ONEBYTEHEADER.concat([0x90, 0x05, TARGETLIGHT_DOWN]), this);
     }
@@ -749,6 +740,9 @@ export class BigAssFans_i6PlatformAccessory {
 
   // set/get won't be called unless showLightAutoSwitch is true
   async setLightAutoSwitchOnState(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      return this.whiteLight.setAuto(Boolean(value));
+    }
     debugLog(this, ['light', 'characteristics'], [1, 3], 'Set Characteristic Light Auto Switch On -> ' + value);
     this.lightAutoSwitchOn = value as boolean;
 
@@ -807,9 +801,7 @@ export class BigAssFans_i6PlatformAccessory {
   // On means enabled, off means disabled
   async setStandbyLEDEnabledSwitchOnState(value: CharacteristicValue) {
     debugLog(this, ['newcode', 'characteristics'], [1, 3], 'Set Characteristic StandbyLED Enabled Switch On -> ' + value);
-    this.standbyLEDEnabledSwitchOn = value as boolean;
-    clientWrite(this.client,
-      [0x0c, 0x12, 0x09, 0x12, 0x07, 0x1a, 0x05, 0x9a, 0x05, 0x02, 0x10, (this.standbyLEDEnabledSwitchOn ? 0x01 : 0x00), 0x0c], this);
+    await writeNightLight(this, light => light.setPower(Boolean(value)));
   }
 
   async getStandbyLEDEnabledSwitchOnState(): Promise<CharacteristicValue> {
@@ -818,11 +810,9 @@ export class BigAssFans_i6PlatformAccessory {
     return isOn;
   }
 
-  // On/Off is actually tied to Enabled
-  // onSet - ignore
-  // onGet returns On if Enabled, else Off
+  // On means the standby feature is enabled; the fan decides when it illuminates.
   async setStandbyLEDOnState(value: CharacteristicValue) {
-    debugLog(this, ['newcode', 'characteristics'], [1, 3], `Set Characteristic StandbyLED On -> ${value}`);
+    await this.setStandbyLEDEnabledSwitchOnState(value);
   }
 
   async getStandbyLEDOnState(): Promise<CharacteristicValue> {
@@ -831,9 +821,7 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setStandbyLEDBrightness(value: CharacteristicValue) {
-    this.standbyLEDStates.Brightness = value as number;
-    clientWrite(this.client,
-      [0x0c, 0x12, 0x09, 0x12, 0x07, 0x1a, 0x05, 0x9a, 0x05, 0x02, 0x18, this.standbyLEDStates.Brightness, 0x0c], this);
+    await writeNightLight(this, light => light.setBrightness(Number(value)));
   }
 
   async getStandbyLEDBrightness(): Promise<CharacteristicValue> {
@@ -843,17 +831,7 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setStandbyLEDHue(value: CharacteristicValue) {
-    this.standbyLEDStates.Hue = value as number;
-    debugLog(this, ['newcode', 'characteristics'], [1, 3], `Set Characteristic StandbyLED Hue -> ${this.standbyLEDStates.Hue}`);
-
-    // convert hue/saturation/brightness to color
-    const rgb = HSVtoRGB(this.standbyLEDStates.Hue, this.standbyLEDStates.Saturation, this.standbyLEDStates.Brightness);
-    const red = Math.round(rgb[0]);
-    const green = Math.round(rgb[1]);
-    const blue = Math.round(rgb[2]);
-
-    // send preset: custom, and rgb values (use varints for RGB values >= 128)
-    clientWrite(this.client, buildStandbyLEDColorMessage(red, green, blue), this);
+    await writeNightLight(this, light => light.setHue(Number(value)));
   }
 
   async getStandbyLEDHue(): Promise<CharacteristicValue> {
@@ -862,18 +840,7 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setStandbyLEDSaturation(value: CharacteristicValue) {
-    this.standbyLEDStates.Saturation = value as number;
-    debugLog(this, ['newcode', 'characteristics'], [1, 3],
-      `Set Characteristic StandbyLED Saturation -> ${this.standbyLEDStates.Saturation}`);
-
-    // convert hue/saturation/brightness to color
-    const rgb = HSVtoRGB(this.standbyLEDStates.Hue, this.standbyLEDStates.Saturation, 100);
-    const red = Math.round(rgb[0]);
-    const green = Math.round(rgb[1]);
-    const blue = Math.round(rgb[2]);
-
-    // send preset: custom, and rgb values (use varints for RGB values >= 128)
-    clientWrite(this.client, buildStandbyLEDColorMessage(red, green, blue), this);
+    await writeNightLight(this, light => light.setSaturation(Number(value)));
   }
 
   async getStandbyLEDSaturation(): Promise<CharacteristicValue> {
@@ -883,6 +850,14 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setDownlightDarkenServiceOnState(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      if (value) {
+        setTimeout(() => this.downlightDarkenService.updateCharacteristic(
+          this.platform.Characteristic.On, false), this.incrementalButtonsDelay);
+        await writeWhiteLight(this, light => light.setBrightness(light.view.brightness + (-10)));
+      }
+      return;
+    }
     debugLog(this, ['newcode', 'characteristics'], [1, 4], 'Triggered setDownlightDarkenServiceOnState');
     if (value) {
       // Reset the switch to OFF after a short delay to simulate a "button"
@@ -910,6 +885,14 @@ export class BigAssFans_i6PlatformAccessory {
   }
 
   async setDownlightLightenServiceOnState(value: CharacteristicValue) {
+    if (this.whiteLight) {
+      if (value) {
+        setTimeout(() => this.downlightLightenService.updateCharacteristic(
+          this.platform.Characteristic.On, false), this.incrementalButtonsDelay);
+        await writeWhiteLight(this, light => light.setBrightness(light.view.brightness + (10)));
+      }
+      return;
+    }
     debugLog(this, ['newcode', 'characteristics'], [1, 4], 'Triggered setDownlightLightenServiceOnState');
     if (value) {
       // Reset the switch to OFF after a short delay to simulate a "button"
@@ -984,15 +967,25 @@ export class BigAssFans_i6PlatformAccessory {
 }
 
 function makeStandbyLED(pA: BAF) {
-  pA.standbyLEDBulbService = pA.accessory.getService('standbyLED') ||
-  pA.accessory.addService(pA.platform.Service.Lightbulb, 'standbyLED', 'light-3');
+  const owner = pA.lightTiles?.night ?? pA.accessory;
+  pA.standbyLEDBulbService = owner.getService('standbyLED') ||
+  owner.addService(pA.platform.Service.Lightbulb, 'standbyLED', 'light-3');
 
   const capitalizeName = pA.Name[0] === pA.Name[0].toUpperCase();
-  setName(pA, pA.standbyLEDBulbService, pA.Name + (capitalizeName ? ' Night Light' : ' night light'));
+  const label = pA.lightTiles?.night ? ' LED Back Light' : capitalizeName ? ' Night Light' : ' night light';
+  setName(pA, pA.standbyLEDBulbService, pA.Name + label);
 
-  // On/Off is actually tied to Enabled
-  // onSet - ignore
-  // onGet returns On if Enabled, else Off
+  if (!pA.nightLight) {
+    pA.nightLight = new NightLightCoordinator(
+      pA.accessory.context.nightLightBrightness,
+      state => clientWrite(pA.client, nightLightCommand(state), pA, true),
+      () => sendLightStateRefreshRequest(pA),
+      () => syncNightLight(pA),
+      message => pA.platform.log.warn(pA.Name + ' - ' + message),
+    );
+  }
+
+  // On enables the feature with a usable intensity; Off disables it.
   pA.standbyLEDBulbService.getCharacteristic(pA.platform.Characteristic.On)
     .onSet(pA.setStandbyLEDOnState.bind(pA))
     .onGet(pA.getStandbyLEDOnState.bind(pA));
@@ -1018,7 +1011,202 @@ function makeStandbyLED(pA: BAF) {
  * switches based on the user's config and the fan's detected capabilities.
  * Removes any stale legacy services (Fan v1, whoosh switch) from cached accessories.
  */
+function lightTemperatureMin(s: string, pA: BAF) {
+  const value = Number(s);
+  if (pA.whiteLight && value >= 1000 && value <= 10000) {
+    pA.whiteLightReport.minKelvin = value;
+  }
+}
+
+function lightTemperatureMax(s: string, pA: BAF) {
+  const value = Number(s);
+  if (pA.whiteLight && value >= 1000 && value <= 10000) {
+    pA.whiteLightReport.maxKelvin = value;
+  }
+}
+
+function resetStandbyReport(_s: string, pA: BAF) {
+  // A StandbyLed report is a complete value. Omitted protobuf scalars are zero,
+  // including enabled=false and percent=0, not just the custom RGB channels.
+  pA.nightLightReport = emptyNightLightState();
+}
+
+async function writeNightLight(pA: BAF, action: (light: NightLightCoordinator) => Promise<void>) {
+  try {
+    if (!pA.nightLight || !pA.client || pA.client.destroyed || !pA.client.writable) {
+      throw new Error('Fan is not connected');
+    }
+    await action(pA.nightLight);
+    // Restore the coordinated values after HAP acknowledges each scene setter.
+    setTimeout(() => syncNightLight(pA), 0);
+  } catch (error) {
+    pA.platform.log.warn(pA.Name + ' night light: ' + (error instanceof Error ? error.message : String(error)));
+    throw new pA.platform.api.hap.HapStatusError(pA.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  }
+}
+
+function syncNightLight(pA: BAF) {
+  const light = pA.nightLight;
+  if (!light?.ready) {
+    return;
+  }
+  const state = light.view;
+  const [hue, saturation] = nightLightColor(state);
+  const c = pA.platform.Characteristic;
+  pA.standbyLEDEnabledSwitchOn = state.enabled;
+  Object.assign(pA.standbyLEDStates, { On: state.enabled, Brightness: state.brightness, Hue: hue, Saturation: saturation });
+  pA.standbyLEDEnabledSwitchService?.updateCharacteristic(c.On, state.enabled);
+  pA.standbyLEDBulbService?.updateCharacteristic(c.On, state.enabled);
+  pA.standbyLEDBulbService?.updateCharacteristic(c.Brightness, state.brightness);
+  pA.standbyLEDBulbService?.updateCharacteristic(c.Hue, hue);
+  pA.standbyLEDBulbService?.updateCharacteristic(c.Saturation, saturation);
+  if (light.rememberedBrightness > 0 && pA.accessory.context.nightLightBrightness !== light.rememberedBrightness) {
+    pA.accessory.context.nightLightBrightness = light.rememberedBrightness;
+    pA.platform.api.updatePlatformAccessories([pA.accessory]);
+  }
+}
+
+function requireWhiteLight(pA: BAF) {
+  if (!pA.whiteLight?.ready || !pA.client || pA.client.destroyed || !pA.client.writable) {
+    throw new pA.platform.api.hap.HapStatusError(pA.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  }
+  return pA.whiteLight;
+}
+
+async function writeWhiteLight(pA: BAF, action: (light: DualLightCoordinator) => Promise<void>) {
+  try {
+    await action(requireWhiteLight(pA));
+    // HAP stores the requested value after onSet resolves. Restore the
+    // coordinated value afterwards (including combined On/brightness writes).
+    setTimeout(() => syncCoordinatedLights(pA), 0);
+  } catch (error) {
+    pA.platform.log.warn(pA.Name + ' white light: ' + (error instanceof Error ? error.message : String(error)));
+    throw new pA.platform.api.hap.HapStatusError(pA.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  }
+}
+
+function syncCoordinatedLights(pA: BAF) {
+  const light = pA.whiteLight;
+  if (!light || !pA.whiteLightService) {
+    return;
+  }
+  const state = light.view;
+  const c = pA.platform.Characteristic;
+  pA.whiteLightService.updateCharacteristic(c.On, state.power !== 0 && state.brightness > 0);
+  pA.whiteLightService.updateCharacteristic(c.Brightness, state.brightness || light.memory[state.selection === 2 ? 'up' : 'down'] || 50);
+  if (pA.capabilities.hasColorTempControl) {
+    const limits = light.temperatureLimits();
+    pA.whiteLightService.getCharacteristic(c.ColorTemperature)
+      .setProps({ minValue: Math.round(1000000 / limits.max), maxValue: Math.round(1000000 / limits.min) });
+    if (state.kelvin !== undefined) {
+      pA.whiteLightService.updateCharacteristic(c.ColorTemperature, Math.round(1000000 / state.kelvin));
+    }
+  }
+  for (const [mode, service] of pA.lightModeServices) {
+    service.updateCharacteristic(c.On, pA.dualLightModeControl === 'channels'
+      ? light.channelOn(mode as 1 | 2) : state.selection === mode);
+  }
+  pA.lightAutoSwitchOn = state.power === 2;
+  pA.lightAutoSwitchService?.updateCharacteristic(c.On, pA.lightAutoSwitchOn);
+  pA.downlightStates.On = state.power !== 0 && state.brightness > 0;
+  pA.downlightStates.Brightness = state.brightness;
+  const memory = light.persistedMemory;
+  if (JSON.stringify(pA.accessory.context.whiteLightMemory) !== JSON.stringify(memory)) {
+    pA.accessory.context.whiteLightMemory = { ...memory };
+    pA.platform.api.updatePlatformAccessories([pA.accessory]);
+  }
+}
+
+function makeCoordinatedLights(pA: BAF) {
+  pA.bulbCount = 2;
+  pA.downlightBulbService = undefined!;
+  pA.uplightBulbService = undefined!;
+  pA.lightModeServices ??= new Map();
+  const serviceType = pA.platform.Service;
+  const c = pA.platform.Characteristic;
+  const whiteOwner = pA.lightTiles?.white ?? pA.accessory;
+  const modeOwner = pA.lightTiles?.modes ?? pA.accessory;
+  pA.whiteLightService = whiteOwner.getServiceById(serviceType.Lightbulb, 'white-light') ||
+    whiteOwner.addService(serviceType.Lightbulb, 'white-light', 'white-light');
+  setName(pA, pA.whiteLightService, pA.Name + ' White Ambiance');
+  if (!pA.whiteLight) {
+    pA.whiteLight = new DualLightCoordinator(
+      pA.accessory.context.whiteLightMemory,
+      commands => commands.forEach(command => clientWrite(pA.client, lightCommand(command.field, command.value), pA, true)),
+      () => sendLightStateRefreshRequest(pA),
+      () => syncCoordinatedLights(pA),
+      message => pA.platform.log.warn(pA.Name + ' - ' + message),
+    );
+    sendStateRefreshRequest(pA);
+  }
+  pA.whiteLightService.getCharacteristic(c.On)
+    .onGet(() => {
+      const state = requireWhiteLight(pA).view;
+      return state.power !== 0 && state.brightness > 0;
+    })
+    .onSet(value => writeWhiteLight(pA, light => light.setPower(Boolean(value))));
+  pA.whiteLightService.getCharacteristic(c.Brightness)
+    .onGet(() => {
+      const light = requireWhiteLight(pA);
+      return light.view.brightness || light.memory[light.view.selection === 2 ? 'up' : 'down'] || 50;
+    })
+    .onSet(value => writeWhiteLight(pA, light => light.setBrightness(Number(value))));
+  if (pA.capabilities.hasColorTempControl) {
+    pA.whiteLightService.getCharacteristic(c.ColorTemperature)
+      .onGet(() => {
+        const state = requireWhiteLight(pA).view;
+        if (state.kelvin === undefined) {
+          throw new pA.platform.api.hap.HapStatusError(pA.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        return Math.round(1000000 / state.kelvin);
+      })
+      .onSet(value => writeWhiteLight(pA, light => light.setTemperature(Number(value))));
+  } else if (pA.whiteLightService.testCharacteristic(c.ColorTemperature)) {
+    pA.whiteLightService.removeCharacteristic(pA.whiteLightService.getCharacteristic(c.ColorTemperature));
+  }
+  pA.lightModeServices.clear();
+  const modes = pA.dualLightModeControl === 'both-up' ? [0] : pA.dualLightModeControl === 'channels' ? [1, 2] : [1, 2, 0];
+  for (const mode of [0, 1, 2]) {
+    const subtype = 'white-mode-' + mode;
+    if (!modes.includes(mode)) {
+      zapService(pA, subtype);
+      continue;
+    }
+    const service = modeOwner.getServiceById(serviceType.Switch, subtype) ||
+      modeOwner.addService(serviceType.Switch, subtype, subtype);
+    setName(pA, service, pA.Name + (pA.dualLightModeControl === 'both-up'
+      ? ' Both Lights' : mode === 0 ? ' Both' : mode === 1 ? ' Down' : ' Up'));
+    service.getCharacteristic(c.On)
+      .onGet(() => {
+        const light = requireWhiteLight(pA);
+        return pA.dualLightModeControl === 'channels' ? light.channelOn(mode as 1 | 2) : light.view.selection === mode;
+      })
+      .onSet(value => writeWhiteLight(pA, light => {
+        if (pA.dualLightModeControl === 'both-up') {
+          return light.select(value ? 0 : 2, true);
+        }
+        return pA.dualLightModeControl === 'channels'
+          ? light.setChannel(mode as 1 | 2, Boolean(value)) : light.select(mode as 0 | 1 | 2, Boolean(value));
+      }));
+    pA.lightModeServices.set(mode, service);
+  }
+}
+
+
 function makeServices(pA: BAF) {
+  // Upgrade upstream's optional third dimmer to the coordinated mode controls.
+  zapService(pA, 'bothlights', ['light-4'],
+    [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-4' }]);
+  const coordinated = !pA.noLights && pA.capabilities.hasLight && pA.capabilities.hasUplight;
+  pA.lightTiles = {};
+  if (coordinated && pA.platform.layout) {
+    pA.lightTiles.white = pA.platform.layout.owner(pA.accessory, 'white', 'White Ambiance', ['white-light']);
+    pA.lightTiles.modes = pA.platform.layout.owner(pA.accessory, 'modes', 'Light Mode',
+      ['white-mode-0', 'white-mode-1', 'white-mode-2']);
+    if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
+      pA.lightTiles.night = pA.platform.layout.owner(pA.accessory, 'night', 'LED Back Light', ['light-3']);
+    }
+  }
   const capitalizeName = pA.Name[0] === pA.Name[0].toUpperCase();
   let accessoryName:string;
   pA.bulbCount = 0;
@@ -1066,13 +1254,19 @@ function makeServices(pA: BAF) {
       .onSet(pA.setSwingMode.bind(pA))
       .onGet(pA.getSwingMode.bind(pA));
 
-    // Remove legacy whoosh switch if present (now native SwingMode)
+    if (pA.showWhooshSwitch) {
+      pA.whooshSwitchService = pA.accessory.getServiceById(pA.platform.Service.Switch, 'switch-1') ||
+        pA.accessory.addService(pA.platform.Service.Switch, 'whooshSwitch', 'switch-1');
+      setName(pA, pA.whooshSwitchService, pA.Name + ' Whoosh');
+      pA.whooshSwitchService.getCharacteristic(pA.platform.Characteristic.On)
+        .onSet(pA.setWhooshSwitchOnState.bind(pA)).onGet(pA.getWhooshSwitchOnState.bind(pA));
+    }
     const legacyWhoosh = pA.accessory.getService('whooshSwitch');
-    if (legacyWhoosh) {
+    if (legacyWhoosh && !pA.showWhooshSwitch) {
       pA.accessory.removeService(legacyWhoosh);
     }
 
-    if (pA.showDimToWarmSwitch) {
+    if (pA.showDimToWarmSwitch && !pA.noLights && pA.capabilities.hasColorTempControl) {
       pA.dimToWarmSwitchService = pA.accessory.getService('dimToWarmSwitch') ||
         pA.accessory.addService(pA.platform.Service.Switch, 'dimToWarmSwitch', 'switch-2');
       accessoryName = capitalizeName ?  ' Dim to Warm' : ' dim to warm';
@@ -1157,8 +1351,20 @@ function makeServices(pA: BAF) {
     );
   }
 
-  // downlight
-  if (pA.capabilities.hasLight) {
+  if (coordinated) {
+    makeCoordinatedLights(pA);
+  } else {
+    pA.whiteLight?.disconnect();
+    pA.whiteLight = undefined;
+    pA.whiteLightService = undefined;
+    pA.lightModeServices?.clear();
+    for (const subtype of ['white-light', 'white-mode-0', 'white-mode-1', 'white-mode-2']) {
+      zapService(pA, subtype);
+    }
+  }
+
+  // Single-light fans retain their existing dimmer services and handlers.
+  if (!coordinated && pA.capabilities.hasLight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} downlight disabled by configuration '"noLights": true'`);
       zapService(pA, 'downlight', ['light-1'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-1' }]);
@@ -1189,7 +1395,7 @@ function makeServices(pA: BAF) {
   }
 
   // uplight
-  if (pA.capabilities.hasUplight) {
+  if (!coordinated && pA.capabilities.hasUplight) {
     if (pA.noLights) {
       pA.platform.log.info(`${pA.Name} uplight disabled by configuration '"noLights": true'`);
       zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
@@ -1210,23 +1416,6 @@ function makeServices(pA: BAF) {
     }
   } else {
     zapService(pA, 'uplight', ['light-2'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-2' }]);
-  }
-
-  // both lights (downlight + uplight together) - only meaningful on fans with two light services
-  if (pA.bulbCount === 2 && pA.bothlightsControl) {
-    pA.bothlightsBulbService = pA.accessory.getService('bothlights') ||
-      pA.accessory.addService(pA.platform.Service.Lightbulb, 'bothlights', 'light-4');
-    setName(pA, pA.bothlightsBulbService, pA.Name + (capitalizeName ? ' Both Lights' : ' both lights'));
-
-    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.On)
-      .onSet(pA.setBothLightsOnState.bind(pA))
-      .onGet(pA.getBothLightsOnState.bind(pA));
-
-    pA.bothlightsBulbService.getCharacteristic(pA.platform.Characteristic.Brightness)
-      .onSet(pA.setBothBrightness.bind(pA))
-      .onGet(pA.getBothBrightness.bind(pA));
-  } else {
-    zapService(pA, 'bothlights', ['light-4'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-4' }]);
   }
 
   if (pA.capabilities.hasUVCLight) {
@@ -1283,7 +1472,7 @@ function makeServices(pA: BAF) {
     zapServiceByType(pA, pA.platform.Service.HumiditySensor, 'humidity sensor');
   }
 
-  if (pA.showLightAutoSwitch) {
+  if (pA.showLightAutoSwitch && !pA.noLights && (pA.capabilities.hasLight || pA.capabilities.hasUplight)) {
     pA.lightAutoSwitchService = pA.accessory.getService('lightAutoSwitch') ||
       pA.accessory.addService(pA.platform.Service.Switch, 'lightAutoSwitch', 'switch-4');
     accessoryName = capitalizeName ?  ' Light Auto' : ' light auto';
@@ -1321,7 +1510,7 @@ function makeServices(pA: BAF) {
   }
 
   // standbyLED
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
+  if (!pA.noLights && pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
     pA.standbyLEDEnabledSwitchService = pA.accessory.getService('standbyEnabledSwitch') ||
       pA.accessory.addService(pA.platform.Service.Switch, 'standbyEnabledSwitch', 'switch-7');
     if (pA.standbyLEDEnabledSwitchService) {
@@ -1337,10 +1526,18 @@ function makeServices(pA: BAF) {
       .onGet(pA.getStandbyLEDEnabledSwitchOnState.bind(pA));
 
     makeStandbyLED(pA);
+    if (coordinated) {
+      zapService(pA, 'standbyEnabledSwitch', ['switch-7']);
+      pA.standbyLEDEnabledSwitchService = undefined!;
+    }
   } else {
     debugLog(pA, 'newcode', 1, 'zap standbyEnabledSwitch and standbyLED');
     zapService(pA, 'standbyEnabledSwitch', ['switch-7'], [{ serviceType: pA.platform.Service.Switch, subtype: 'switch-7' }]);
     zapService(pA, 'standbyLED', ['light-3'], [{ serviceType: pA.platform.Service.Lightbulb, subtype: 'light-3' }]);
+    pA.nightLight?.disconnect();
+    pA.nightLight = undefined;
+    pA.standbyLEDEnabledSwitchService = undefined!;
+    pA.standbyLEDBulbService = undefined!;
   }
 
   debugLog(pA, 'newcode', 1, `enableIncrementalButtons is ${pA.enableIncrementalButtons}`);
@@ -1385,6 +1582,7 @@ function makeServices(pA: BAF) {
   }
 
   pA.platform.api.updatePlatformAccessories([pA.accessory]);
+  pA.platform.layout?.reconcile(pA.accessory, Object.keys(pA.lightTiles) as LightTile[]);
   debugLog(pA, 'progress', 1, 'leaving makeServices');
 }
 
@@ -1395,38 +1593,40 @@ type ServiceSubtypeAlias = {
 
 /** Removes matching services from the accessory cache by display name, configured name, or subtype. */
 function zapService(pA:BAF, serviceName: string, aliases: string[] = [], subtypeAliases: ServiceSubtypeAlias[] = []) {
-  const serviceKeys = new Set([serviceName, ...aliases].map(normalizeServiceKey));
-  const services = new Set<Service>();
+  for (const owner of [pA.accessory, ...(pA.platform.layout?.children(pA.accessory) ?? [])]) {
+    const serviceKeys = new Set([serviceName, ...aliases].map(normalizeServiceKey));
+    const services = new Set<Service>();
 
-  for (const key of serviceKeys) {
-    const directService = pA.accessory.getService(key);
-    if (directService) {
-      services.add(directService);
+    for (const key of serviceKeys) {
+      const directService = owner.getService(key);
+      if (directService) {
+        services.add(directService);
+      }
     }
-  }
 
-  for (const alias of subtypeAliases) {
-    const serviceById = pA.accessory.getServiceById(alias.serviceType, alias.subtype);
-    if (serviceById) {
-      services.add(serviceById);
+    for (const alias of subtypeAliases) {
+      const serviceById = owner.getServiceById(alias.serviceType, alias.subtype);
+      if (serviceById) {
+        services.add(serviceById);
+      }
     }
-  }
 
-  for (const service of pA.accessory.services) {
-    const serviceValues = [
-      service.displayName,
-      service.name,
-      service.subtype,
-    ].map(normalizeServiceKey);
+    for (const service of owner.services) {
+      const serviceValues = [
+        service.displayName,
+        service.name,
+        service.subtype,
+      ].map(normalizeServiceKey);
 
-    if (serviceValues.some((value) => serviceKeys.has(value))) {
-      services.add(service);
+      if (serviceValues.some((value) => serviceKeys.has(value))) {
+        services.add(service);
+      }
     }
-  }
 
-  for (const service of services) {
-    pA.platform.log.info(`${pA.Name} - removing stale HomeKit service: ${service.displayName || serviceName}`);
-    pA.accessory.removeService(service);
+    for (const service of services) {
+      pA.platform.log.info(`${pA.Name} - removing stale HomeKit service: ${service.displayName || serviceName}`);
+      owner.removeService(service);
+    }
   }
 }
 
@@ -1494,6 +1694,8 @@ function networkSetup(pA: BAF) {
       pA.client.destroy();
     }
     pA.client = undefined;
+    pA.whiteLight?.disconnect();
+    pA.nightLight?.disconnect();
     clearRotationSpeedDiagnostics(pA);
 
     setTimeout(() => {
@@ -1653,89 +1855,38 @@ function backOff(errorMsgString: string, retryCount: number) : number {
  * complete protobuf message to buildFunStack() for decoding and dispatch.
  */
 function onData(pA: BAF, data: Buffer) {
-  debugLog(pA, 'network', 8, `accessory client got: ${data.length} ${(data.length === 1 ? ' byte' : ' bytes')}`);
-  debugLog(pA, 'network', 13, `raw (stuffed) data:  ${hexFormat(data)}`);
-
-  let startIndex = 0;
-  let numChunks = 0;
-  const chunks: Buffer[] = [];
-
-  if (data[0] !== 0xc0 || (data[0] === 0xc0 && data[1] === 0xc0)) {
-    // must be remaining fragment from last message
-    startIndex = data.indexOf(0xc0) + 1;  // should be a starting 0xc0 here
-    if (pA.chunkFragment.length <= 0) {
-      debugLog(pA, 'redflags', 1, `dangling data fragment or empty message - ${startIndex} bytes ignored`);
-    } else {
-      const arr = [pA.chunkFragment, data.subarray(0, startIndex)]; // startIndex serves as length here
-      chunks[numChunks] = Buffer.concat(arr);
-      debugLog(pA, 'network', 14, `pA.chunkFragment ${hexFormat(pA.chunkFragment)}`);
-      debugLog(pA, 'network', 14, `data.subarray(0, ${startIndex}) ${hexFormat(data.subarray(0, startIndex))}`);
-      debugLog(pA, 'network', 9, `built chunk from fragments ${hexFormat(chunks[numChunks])}`);
-      numChunks++;
-    }
+  const buffer = Buffer.concat([pA.chunkFragment, data]);
+  let start = buffer.indexOf(0xc0);
+  if (start === -1) {
+    pA.chunkFragment = Buffer.alloc(0);
+    return;
   }
-
-  debugLog(pA, 'network', 9, `startIndex: ${startIndex}`);
-  let finalEndMarker = 0;
-  let foundStart = false;
-
-  for (let i = startIndex; i < data.length; i++) {
-    if (data[i] === 0xc0) {
-      if (!foundStart) {
-        debugLog(pA, 'network', 9, `start marker at ${i}`);
-        foundStart = true;
-        startIndex = i;
-      } else {
-        debugLog(pA, 'network', 9, `end marker at ${i}`);
-        chunks[numChunks] = data.subarray(startIndex, i+1);
-        numChunks++;
-        foundStart = false;
-        finalEndMarker = i;
+  let end = buffer.indexOf(0xc0, start + 1);
+  while (end !== -1) {
+    if (end > start + 1) {
+      const frame = unstuff(buffer.subarray(start + 1, end));
+      try {
+        const funStack = buildFunStack(frame, pA);
+        if (!pA.capabilitiesEstablished) {
+          pA.funQueue.push(...funStack);
+        } else {
+          flushFunQueue(pA, funStack);
+        }
+      } catch (error) {
+        if (!isProtobufParseError(error)) {
+          throw error;
+        }
+        pA.platform.log.warn(pA.Name + ' - dropped malformed protobuf frame: ' + error.message);
       }
     }
+    start = end;
+    end = buffer.indexOf(0xc0, start + 1);
   }
-
-  if (finalEndMarker < (data.length - 1)) {
-    debugLog(pA, 'network', 9, 'stashed data fragment');
-    debugLog(pA, 'network', 10, `finalEndMarker: ${finalEndMarker}`);
-    pA.chunkFragment = data.subarray(finalEndMarker + 1);
-    debugLog(pA, 'network', 10, `pA.chunkFragment ${hexFormat(pA.chunkFragment)}`);
-  } else {
-    pA.chunkFragment = Buffer.from([]);
-  }
-
-  for (let i = 0; i < numChunks; i++) {
-    if (chunks[i][0] !== 0xc0 || chunks[i][chunks[i].length-1] !== 0xc0) {
-      debugLog(pA, 'redflags', 1, `unbracketed chunk: ${i} - ${hexFormat(chunks[i])}`);
-      continue;
-    } else {
-      chunks[i] = chunks[i].subarray(1, chunks[i].length-1);
-    }
-
-    const unstuffedChunk = unstuff(chunks[i]);
-    debugLog(pA, 'network', 11, 'raw (unstuffed) chunks[' + i + ']: ' + hexFormat(unstuffedChunk));
-
-    let funStack: funCall[];
-    try {
-      funStack = buildFunStack(unstuffedChunk, pA);
-    } catch (error) {
-      if (isProtobufParseError(error)) {
-        pA.platform.log.warn(`${pA.Name} - dropped malformed protobuf frame: ${error.message}`);
-        continue;
-      }
-
-      throw error;
-    }
-    if (!pA.capabilitiesEstablished) {
-      funStack.forEach((value) => {
-        debugLog(pA, 'funstack', 1, `queue until capabilities established: ${value[0].name}(${value[1]})`);
-      });
-      pA.funQueue.push(...funStack);
-    } else {
-      debugLog(pA, 'funstack', (funStack.length === 0) ? 2 : 1, `funstack.length: ${funStack.length}`);
-      debugLog(pA, 'funstack', 1, `pA.capabilitiesEstablished: ${pA.capabilitiesEstablished}`);
-      flushFunQueue(pA, funStack);
-    }
+  // Keep the opening delimiter too: a TCP fragment can end anywhere, including inside an escaped byte.
+  pA.chunkFragment = Buffer.from(buffer.subarray(start));
+  if (pA.chunkFragment.length > 262144) {
+    pA.platform.log.warn(pA.Name + ' - discarded oversized incomplete SLIP frame');
+    pA.chunkFragment = Buffer.alloc(0);
   }
 }
 
@@ -1795,9 +1946,19 @@ function setTargetBulb(s: string, pA:BAF) {
   const value = Number(s);
   debugLog(pA, 'light', 1, 'setTargetBulb: ' + value);
   pA.targetBulb = value;
+  if (pA.whiteLight && (value === 0 || value === 1 || value === 2)) {
+    pA.whiteLightReport.selection = value;
+  }
 }
 
 function lightColorTemperature(s: string, pA:BAF) {
+  if (pA.whiteLight) {
+    const value = Number(s);
+    if (value >= 1000 && value <= 10000) {
+      pA.whiteLightReport.kelvin = value;
+    }
+    return;
+  }
   if (pA.noLights || !pA.capabilities.hasColorTempControl) {
     return;
   }
@@ -1831,6 +1992,13 @@ function targetedColorTemperature(value:number, service:Service, states:lightSta
 }
 
 function lightBrightness(s: string, pA:BAF) {
+  if (pA.whiteLight) {
+    const value = Number(s);
+    if (value >= 0 && value <= 100) {
+      pA.whiteLightReport.brightness = value;
+    }
+    return;
+  }
   if (pA.noLights) {
     return;
   }
@@ -1849,22 +2017,6 @@ function lightBrightness(s: string, pA:BAF) {
       targetedlightBrightness(value, pA.downlightBulbService, pA.downlightStates, 'Down', pA);
       break;
   }
-
-  syncBothlightsService(pA);
-}
-function syncBothlightsService(pA:BAF) {
-  if (pA.bothlightsBulbService === undefined) {
-    return;
-  }
-
-  const isOn = pA.downlightStates.On || pA.uplightStates.On;
-  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.On, isOn);
-
-  const brightness = Math.max(
-    pA.downlightStates.Brightness === 0 ? 1 : pA.downlightStates.Brightness,
-    pA.uplightStates.Brightness === 0 ? 1 : pA.uplightStates.Brightness,
-  );
-  pA.bothlightsBulbService.updateCharacteristic(pA.platform.Characteristic.Brightness, brightness);
 }
 function targetedlightBrightness(value:number, lightBulbService:Service, states:lightStates, description:string, pA:BAF) {
   if (lightBulbService === undefined) {
@@ -1892,6 +2044,13 @@ function targetedlightBrightness(value:number, lightBulbService:Service, states:
 }
 
 function lightOnState(s: string, pA:BAF) {
+  if (pA.whiteLight) {
+    const value = Number(s);
+    if (value === 0 || value === 1 || value === 2) {
+      pA.whiteLightReport.power = value as 0 | 1 | 2;
+    }
+    return;
+  }
   if (pA.noLights) {
     return;
   }
@@ -1924,8 +2083,6 @@ function lightOnState(s: string, pA:BAF) {
         break;
     }
   }
-
-  syncBothlightsService(pA);
 }
 function targetedlightOnState(value:number, service:Service, states:lightStates, description:string, pA:BAF) {
   debugLog(pA, 'light', 1, `${description} lightOnState value: ` + value);
@@ -1958,6 +2115,10 @@ function targetedlightOnState(value:number, service:Service, states:lightStates,
 
 function fanOnState(s: string, pA:BAF) {
   const value = Number(s);
+  if (value === 0) {
+    clearTimeout(pA.fanDisplayRepeatTimer);
+    pA.fanDisplayRepeatTimer = undefined;
+  }
 
   // Update TargetFanState: 0=Manual, 1=Auto
   const isAuto = (value === 2);
@@ -1987,9 +2148,8 @@ function fanOnState(s: string, pA:BAF) {
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
   pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
 
-  if (value === 0) {
-    clearRotationSpeedDiagnostics(pA);
-  }
+  // An Off echo can arrive while a new slider write is still queued.
+  // Only an explicit HomeKit Off or disconnect cancels that command.
 
   if (pA.lastFanActiveRequestAt !== 0) {
     const elapsedMs = Date.now() - pA.lastFanActiveRequestAt;
@@ -2018,6 +2178,13 @@ function sendStateRefreshRequest(pA: BAF) {
   clientWrite(pA.client, [0x12, 0x02, 0x1a, 0x00], pA);  // request current state snapshot
 }
 
+function sendLightStateRefreshRequest(pA: BAF) {
+  if (!pA.client) {
+    return;
+  }
+  clientWrite(pA.client, [0x12, 0x04, 0x1a, 0x02, 0x08, 0x02], pA); // Query.Type.Light; no write commands
+}
+
 function fanRotationDirection(s: string, pA:BAF) {
   const value = Number(s);
   //  fan reports if 'reverse rotation' is on or off, homebridge wants rotation direction
@@ -2030,61 +2197,26 @@ function fanRotationDirection(s: string, pA:BAF) {
 
 function fanRotationSpeed(s: string, pA:BAF) {
   const value = Number(s);
-  const now = Date.now();
-
-  if (
-    pA.pendingRotationSpeedWriteTimeout !== undefined
-    && pA.expectedRotationSpeed !== undefined
-  ) {
-    if (value === pA.expectedRotationSpeed) {
-      clearTimeout(pA.pendingRotationSpeedWriteTimeout);
-      pA.pendingRotationSpeedWriteTimeout = undefined;
-      const pendingPayload = pA.pendingRotationSpeedWrite;
-      pA.pendingRotationSpeedWrite = undefined;
-      const requestedPercent = pA.pendingRotationSpeedRequestPercent ?? rotationSpeedPercent(value);
-      const requestedDeviceSpeed = pA.pendingRotationSpeedRequestDeviceSpeed ?? value;
-      pA.pendingRotationSpeedRequestPercent = undefined;
-      pA.pendingRotationSpeedRequestDeviceSpeed = undefined;
-      pA.lastRotationSpeedRequestAt = now;
-      pA.lastRotationSpeedRequestPercent = requestedPercent;
-      pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
-      if (pendingPayload) {
-        diagnosticLog(pA,
-          `${pA.Name} - speed diagnostics: HomeKit requested ${requestedPercent}% -> device speed `
-          + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
-          + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,
-        );
-      }
-    } else {
-      diagnosticLog(pA,
-        `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
-        + `while debouncing HomeKit request for ${pA.expectedRotationSpeed} `
-        + `(${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
-      );
-      return;
-    }
-  }
-
-  if (
-    pA.expectedRotationSpeed !== undefined
-    && now < pA.ignoreUnexpectedRotationSpeedUntil
-    && value !== pA.expectedRotationSpeed
-  ) {
-    diagnosticLog(pA,
-      `${pA.Name} - speed diagnostics: ignoring fan report ${value} (${rotationSpeedPercent(value)}%) `
-      + `while waiting for ${pA.expectedRotationSpeed} (${rotationSpeedPercent(pA.expectedRotationSpeed)}%)`,
-    );
+  if (!Number.isInteger(value) || value < 0 || value > MAXFANSPEED) {
     return;
   }
-
-  if (
-    pA.expectedRotationSpeed !== undefined
-    && (value === pA.expectedRotationSpeed || now >= pA.ignoreUnexpectedRotationSpeedUntil)
-  ) {
-    pA.expectedRotationSpeed = undefined;
-    pA.ignoreUnexpectedRotationSpeedUntil = 0;
+  if (value !== pA.fanStates.RotationSpeed) {
+    clearTimeout(pA.fanDisplayRepeatTimer);
+    pA.fanDisplayRepeatTimer = undefined;
   }
-
+  clearTimeout(pA.fanRefreshTimer);
+  pA.fanRefreshTimer = undefined;
+  // Different reports are authoritative; never discard external app/remote changes.
+  if (pA.displayedFanSpeed !== undefined && value !== pA.displayedFanSpeed) {
+    clearTimeout(pA.fanDisplayTimer);
+    pA.fanDisplayTimer = undefined;
+    pA.displayedFanPercent = undefined;
+    pA.displayedFanSpeed = undefined;
+  }
+  if (pA.pendingRotationSpeedWriteTimeout === undefined) {
+    pA.expectedRotationSpeed = undefined;
+  }
+  rememberFanSpeed(pA, value);
   pA.fanStates.homeShieldUp = false;
   pA.fanStates.RotationSpeed = value;
   debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'set speed to ' + pA.fanStates.RotationSpeed);
@@ -2099,15 +2231,17 @@ function fanRotationSpeed(s: string, pA:BAF) {
     pA.lastRotationSpeedRequestAt = 0;
   }
   debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update RotationSpeed: ' + speedPercent + '%');
-  pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, speedPercent);
+  if (pA.displayedFanPercent === undefined) {
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, speedPercent);
+  }
 
   if (value !== 0) {
-    if (pA.fanStates.Active === 0) {
+    if (pA.fanStates.Active === 0 && pA.fanStates.TargetFanState === 1) {
       pA.fanStates.Active = 1;
       debugLog(pA, ['characteristics', 'newcode'], [3, 1], 'update Fan Active: 1 because speed > 0');
       pA.fanService.updateCharacteristic(pA.platform.Characteristic.Active, pA.fanStates.Active);
     }
-    pA.fanStates.CurrentFanState = 2; // BlowingAir
+    pA.fanStates.CurrentFanState = pA.fanStates.Active === 1 ? 2 : 0; // Off can retain a speed setpoint
     pA.fanService.updateCharacteristic(pA.platform.Characteristic.CurrentFanState, pA.fanStates.CurrentFanState);
   } else {
     if (pA.fanStates.TargetFanState === 1) {
@@ -2196,6 +2330,7 @@ function whooshOnState(s: string, pA:BAF) {
   const value = Number(s);
   const onValue = (value === 0 ? false : true);
   pA.whooshSwitchOn = onValue;
+  pA.whooshSwitchService?.updateCharacteristic(pA.platform.Characteristic.On, onValue);
 
   // Update SwingMode on Fanv2 service (always available)
   if (pA.fanService) {
@@ -2210,7 +2345,7 @@ function dimToWarmOnState(s: string, pA:BAF) {
     const onValue = (value === 0 ? false : true);
     pA.dimToWarmSwitchOn = onValue;
     debugLog(pA, 'characteristics', 3, 'update Dim to Warm:' + pA.dimToWarmSwitchOn);
-    pA.dimToWarmSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.dimToWarmSwitchOn);
+    pA.dimToWarmSwitchService?.updateCharacteristic(pA.platform.Characteristic.On, pA.dimToWarmSwitchOn);
   }
 }
 
@@ -2260,78 +2395,38 @@ function lightOccupancyDetectedState(s: string, pA:BAF) {
 }
 
 function standbyColorPreset(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, 'newcode', 1, `standbyColorPreset(): ${s}`);
-    const hsvPresets = [
-    // hue  sat  val
-      [  0,   0,   0],  // 0 - custom
-      [  0, 100, 100],  // 1 - red
-      [106, 100, 100],  // 2 - green
-      [220, 100, 100],  // 3 - blue
-      [180, 100, 100],  // 4 - teal
-      [ 60, 100, 100],  // 5 - yellow
-      [280, 100, 100],  // 6 - violet
-      [  0,   0, 100],  // 7 - white
-      [ 30, 100, 100],  // 8 - orange
-      [300, 100, 100],   // 9 - pink
-    ];
-
-    // whether or not there's currently a standbyLEDBulbService, we want to store the color.
-    const n = Number(s);
-    if (n < 0 || n >= hsvPresets.length || !hsvPresets[n]) {
-      debugLog(pA, 'redflags', 1, `standbyColorPreset: invalid preset index ${n}, ignoring`);
-      return;
-    }
-    const hue = hsvPresets[n][0];
-    const saturation = hsvPresets[n][1];
-    // const value = hsvPresets[n][2];
-
-    pA.standbyLEDStates.Hue = hue;
-    pA.standbyLEDStates.Saturation = saturation;
-
-    if (pA.standbyLEDBulbService) {
-      pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Hue, hue);
-      pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Saturation, saturation);
-    }
+  if (pA.nightLightReport) {
+    pA.nightLightReport.preset = Number(s);
   }
 }
 
 function standbyLEDEnable(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, ['newcode', 'characteristics'], [1, 3], `standbyLEDEnable(): ${s}`);
-    pA.standbyLEDEnabledSwitchOn = Boolean(Number(s));
-    // should we ignore the update if it's not changing state?
-    debugLog(pA, ['newcode', 'characteristics'], [1, 3], 'update standbyLEDEnabledSwitchOn: ' + pA.standbyLEDEnabledSwitchOn);
-    pA.standbyLEDEnabledSwitchService.updateCharacteristic(pA.platform.Characteristic.On, pA.standbyLEDEnabledSwitchOn);
+  if (pA.nightLightReport) {
+    pA.nightLightReport.enabled = Boolean(Number(s));
   }
 }
 
 function standbyLEDPercent(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, 'newcode', 1, `standbyLEDPercent(): ${s}`);
-    pA.standbyLEDStates.Brightness = Number(s);
-    debugLog(pA, ['newcode', 'characteristics'], [1, 3], `update standbyLED Brightness: ${pA.standbyLEDStates.Brightness}`);
-    if (pA.standbyLEDBulbService) {
-      pA.standbyLEDBulbService.updateCharacteristic(pA.platform.Characteristic.Brightness, pA.standbyLEDStates.Brightness);
-    }
+  if (pA.nightLightReport) {
+    pA.nightLightReport.brightness = Math.max(0, Math.min(100, Number(s)));
   }
 }
 
 function standbyLEDRed(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, 'newcode', 1, `ignoring standbyLEDRed(): ${s}`);
+  if (pA.nightLightReport) {
+    pA.nightLightReport.red = Math.max(0, Math.min(255, Number(s)));
   }
 }
 
 function standbyLEDGreen(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, 'newcode', 1, `ignoring standbyLEDGreen(): ${s}`);
+  if (pA.nightLightReport) {
+    pA.nightLightReport.green = Math.max(0, Math.min(255, Number(s)));
   }
 }
 
 function standbyLEDBlue(s: string, pA:BAF) {
-  if (pA.capabilities.hasStandbyLED && pA.showStandbyLED) {
-    debugLog(pA, 'newcode', 1, `ignoring standbyLEDBlue(): ${s}`);
+  if (pA.nightLightReport) {
+    pA.nightLightReport.blue = Math.max(0, Math.min(255, Number(s)));
   }
 }
 
@@ -2396,23 +2491,6 @@ function varint_encode(n: number) : number[] {
   }
   a.push(n & 0x7F);
   return a;
-}
-
-/** Builds a standby LED color message with proper varint encoding for RGB values >= 128. */
-function buildStandbyLEDColorMessage(red: number, green: number, blue: number): number[] {
-  // inner payload: preset=custom(0), red, green, blue
-  const inner: number[] = [0x08, 0x00];  // preset = 0 (custom)
-  inner.push(0x20, ...varint_encode(red));
-  inner.push(0x28, ...varint_encode(green));
-  inner.push(0x30, ...varint_encode(blue));
-  // wrap in nested length-delimited fields: 0x9a 0x05 <len> <inner>
-  const field19: number[] = [0x9a, 0x05, ...varint_encode(inner.length), ...inner];
-  // 0x1a <len> <field19>
-  const field3: number[] = [0x1a, ...varint_encode(field19.length), ...field19];
-  // 0x12 <len> <field3>
-  const field2inner: number[] = [0x12, ...varint_encode(field3.length), ...field3];
-  // 0x0c 0x12 <len> ... 0x0c (group delimiters)
-  return [0x0c, 0x12, ...varint_encode(field2inner.length), ...field2inner, 0x0c];
 }
 
 function hexFormat(arg: Buffer | number) {
@@ -2488,7 +2566,30 @@ function diagnosticLog(pA: BAF, logMessage: string) {
   }
 }
 
+function savedFanSpeed(pA: BAF): number {
+  const saved = pA.rememberedFanSpeed ?? pA.accessory?.context.fanSpeedMemory;
+  return saved && saved >= 1 && saved <= MAXFANSPEED ? saved : pA.fanStates.RotationSpeed || 1;
+}
+
+function rememberFanSpeed(pA: BAF, speed: number) {
+  if (Number.isInteger(speed) && speed > 0 && speed <= MAXFANSPEED) {
+    pA.rememberedFanSpeed = speed;
+    if (pA.accessory && pA.accessory.context.fanSpeedMemory !== speed) {
+      pA.accessory.context.fanSpeedMemory = speed;
+      pA.platform.api.updatePlatformAccessories([pA.accessory]);
+    }
+  }
+}
+
 function clearRotationSpeedDiagnostics(pA: BAF) {
+  clearTimeout(pA.fanDisplayRepeatTimer);
+  pA.fanDisplayRepeatTimer = undefined;
+  clearTimeout(pA.fanDisplayTimer);
+  clearTimeout(pA.fanRefreshTimer);
+  pA.fanDisplayTimer = undefined;
+  pA.fanRefreshTimer = undefined;
+  pA.displayedFanPercent = undefined;
+  pA.displayedFanSpeed = undefined;
   if (pA.pendingRotationSpeedWriteTimeout !== undefined) {
     clearTimeout(pA.pendingRotationSpeedWriteTimeout);
     pA.pendingRotationSpeedWriteTimeout = undefined;
@@ -2501,7 +2602,6 @@ function clearRotationSpeedDiagnostics(pA: BAF) {
   pA.lastRotationSpeedRequestPercent = undefined;
   pA.lastRotationSpeedRequestDeviceSpeed = undefined;
   pA.expectedRotationSpeed = undefined;
-  pA.ignoreUnexpectedRotationSpeedUntil = 0;
 }
 
 function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
@@ -2512,7 +2612,7 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
   }
 
   pA.pendingRotationSpeedWriteTimeout = setTimeout(() => {
-    const pendingPayload = pA.pendingRotationSpeedWrite;
+    let pendingPayload = pA.pendingRotationSpeedWrite;
     pA.pendingRotationSpeedWrite = undefined;
     pA.pendingRotationSpeedWriteTimeout = undefined;
 
@@ -2521,7 +2621,15 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
     }
 
     const requestedPercent = pA.pendingRotationSpeedRequestPercent ?? rotationSpeedPercent(pA.fanStates.RotationSpeed);
-    const requestedDeviceSpeed = pA.pendingRotationSpeedRequestDeviceSpeed ?? pA.fanStates.RotationSpeed;
+    let requestedDeviceSpeed = pA.pendingRotationSpeedRequestDeviceSpeed ?? pA.fanStates.RotationSpeed;
+    if (requestedPercent === 100 && pA.fanWakeAt !== undefined && Date.now() - pA.fanWakeAt < 400) {
+      requestedDeviceSpeed = savedFanSpeed(pA);
+      pendingPayload = Buffer.from(ONEBYTEHEADER.concat([0xf0, 0x02, requestedDeviceSpeed]));
+      pA.displayedFanPercent = rotationSpeedPercent(requestedDeviceSpeed);
+    }
+    pA.displayedFanSpeed = requestedDeviceSpeed;
+    pA.fanStates.RotationSpeed = requestedDeviceSpeed;
+    pA.expectedRotationSpeed = requestedDeviceSpeed;
     pA.lastRotationSpeedRequestAt = Date.now();
     pA.lastRotationSpeedRequestPercent = requestedPercent;
     pA.lastRotationSpeedRequestDeviceSpeed = requestedDeviceSpeed;
@@ -2530,8 +2638,8 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
       + `${requestedDeviceSpeed}, targetFanState=${pA.fanStates.TargetFanState}, `
       + `active=${pA.fanStates.Active}, payload=${pendingPayload.toString('hex')}`,
     );
-    const snappedPercent = rotationSpeedPercent(requestedDeviceSpeed);
-    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed, snappedPercent);
+    pA.fanService.updateCharacteristic(pA.platform.Characteristic.RotationSpeed,
+      pA.displayedFanPercent ?? rotationSpeedPercent(requestedDeviceSpeed));
     if (requestedDeviceSpeed === 0) {
       pA.fanStates.Active = 0;
       pA.fanStates.CurrentFanState = 0;
@@ -2544,14 +2652,23 @@ function scheduleRotationSpeedWrite(pA: BAF, payload: Buffer) {
     pA.pendingRotationSpeedRequestPercent = undefined;
     pA.pendingRotationSpeedRequestDeviceSpeed = undefined;
     clientWrite(pA.client, pendingPayload, pA);
+    clearTimeout(pA.fanRefreshTimer);
+    pA.fanRefreshTimer = setTimeout(() => {
+      pA.fanRefreshTimer = undefined;
+      sendStateRefreshRequest(pA);
+    }, 300);
+    pA.fanRefreshTimer.unref?.();
   }, ROTATION_SPEED_DEBOUNCE_MS);
 }
 
 /** SLIP-frames and sends a protobuf message to the fan over TCP. */
-function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BAF) {
+function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BAF, strict = false) {
   const activeClient = pA.client ?? client;
   const payload = Buffer.isBuffer(b) ? b : Buffer.from(b);
-  if (!activeClient) {
+  if (!activeClient || activeClient.destroyed || (strict && !activeClient.writable)) {
+    if (strict) {
+      throw new Error('Fan is not connected');
+    }
     clearRotationSpeedDiagnostics(pA);
     pA.platform.log.warn(`${pA.Name} - clientWrite called without an active socket`);
     return;
@@ -2566,6 +2683,9 @@ function clientWrite(client: net.Socket | undefined, b: Buffer | number[], pA:BA
     debugLog(pA, 'network', 8, `sending (stuffed/marked) ${buffer.toString('hex')}`);
     activeClient.write(buffer);
   } catch (error) {
+    if (strict) {
+      throw error;
+    }
     clearRotationSpeedDiagnostics(pA);
     const message = error instanceof Error ? error.message : String(error);
     pA.platform.log.warn(`${pA.Name} - clientWrite(..., (unstuffed/unmarked) ${payload.toString('hex')}) failed: ${message}`);
@@ -2763,6 +2883,11 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                   funStack.push([lightColorTemperature, String(v)]);
                 }
                 break;
+              case 78:
+              case 79:
+                [b, v] = getValue(b);
+                funStack.push([field === 78 ? lightTemperatureMin : lightTemperatureMax, String(v)]);
+                break;
               case 77:  // light dim to warm
                 [b, v] = getValue(b);
                 if (pA.capabilities.hasLight || pA.capabilities.hasUplight) {
@@ -2848,8 +2973,6 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
               case 73:  // light auto motion timeout (time)
               case 74:  // light return to auto (return to auto switch)
               case 75:  // light return to auto (return after)
-              case 78:  // warmest color temperature
-              case 79:  // coolest color temperature
               case 95:  // fan timer minutes
               case 96:  // fan timer UTC expiration
               case 134: // LED indicators enabled
@@ -2933,6 +3056,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                 [b, length] = getVarint(b);
                 const remainingLength = getDelimitedMessageEnd(b, length, 'field 17 capabilities message');
                 const previousCapabilities = cloneCapabilities(pA.capabilities);
+                pA.capabilities = createDefaultCapabilities();
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -3020,9 +3144,7 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
               case 83: {  // standby LED - message: 1/color preset, 2/enabled, 3/percent, 4/red, 5/green, 6/blue
                 [b, length] = getVarint(b);
                 const remainingLength = getDelimitedMessageEnd(b, length, 'field 83 standby LED message');
-                // it seems we must assume the absence of enabled=1 means enabled=0 since turning off the night light (standbyLED)
-                // does not send a subfield 2 with a value of 0, but doesn't send subfield 2 at all.
-                let enabled = 0;
+                funStack.push([resetStandbyReport, '']);
                 while (b.length > remainingLength) {
                   [b, type, field] = getProtoElements(b);
                   debugLog(pA, 'protoparse', 1, '        field: ' + field);
@@ -3038,7 +3160,6 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                       debugLog(pA, 'protoparse', 1, '          value: ' + v);
                       debugLog(pA, 'newcode', 1, `standby LED enabled: ${v}`);
                       funStack.push([standbyLEDEnable, String(v)]);
-                      enabled = v;
                       break;
                     case 3: // percent
                       [b, v] = getValue(b); // ignore
@@ -3070,11 +3191,6 @@ function buildFunStack(b:Buffer, pA: BAF): funCall[] {
                       b = doUnknownField(b, type, pA);
                       break;
                   }
-                }
-                // see comment above
-                if (! enabled) {
-                  debugLog(pA, 'newcode', 1, `buildFunStack(): "${String(enabled)}"`);
-                  funStack.push([standbyLEDEnable, String(enabled)]);
                 }
                 break;
               }
@@ -3597,7 +3713,8 @@ function capabilitiesChanged(previousCapabilities: Capabilities, currentCapabili
 }
 
 function reconcileCapabilities(pA: BAF, previousCapabilities: Capabilities) {
-  if (pA.downlightEquipped === undefined && !pA.capabilities.hasLight && pA.capabilities.hasColorTempControl) {
+  if (pA.downlightEquipped === undefined && !pA.capabilities.hasLight &&
+      !pA.capabilities.hasUplight && pA.capabilities.hasColorTempControl) {
     const str = 'inferring downlight presence from color temperature capability';
     pA.capabilities.hasLight = true;
     debugLog(pA, 'light', 1, str);
@@ -3625,7 +3742,7 @@ function reconcileCapabilities(pA: BAF, previousCapabilities: Capabilities) {
 }
 
 function shouldDeferFunCall([handler]: funCall, pA: BAF) {
-  if (pA.targetBulb !== -1 || pA.bulbCount < 2) {
+  if (pA.whiteLight || pA.targetBulb !== -1 || pA.bulbCount < 2) {
     return false;
   }
 
@@ -3633,6 +3750,7 @@ function shouldDeferFunCall([handler]: funCall, pA: BAF) {
 }
 
 function flushFunQueue(pA: BAF, pending: funCall[] = []) {
+  pA.whiteLightReport = {};
   let queue = [...pA.funQueue, ...pending];
   pA.funQueue = [];
 
@@ -3658,6 +3776,17 @@ function flushFunQueue(pA: BAF, pending: funCall[] = []) {
     }
 
     queue = deferred;
+  }
+  finishLightReport(pA);
+}
+
+function finishLightReport(pA: BAF) {
+  if (pA.whiteLight && Object.keys(pA.whiteLightReport).length > 0) {
+    pA.whiteLight.report(pA.whiteLightReport);
+  }
+  if (pA.nightLightReport) {
+    pA.nightLight?.report(pA.nightLightReport);
+    pA.nightLightReport = undefined;
   }
 }
 
@@ -3726,41 +3855,8 @@ function toDaysHoursMinutesString(minutes: number) : string {
   return `${days} ${days === 1 ? 'day' : 'days'} ${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}`;
 }
 
-// https://www.npmjs.com/package/color-convert
-function HSVtoRGB(hue: number, saturation: number, brightness: number) {
-  const h = hue / 60;
-  const s = saturation / 100;
-  let v = brightness / 100;
-
-  const hi = Math.floor(h) % 6;
-
-  const f = h - Math.floor(h);
-  const p = 255 * v * (1 - s);
-  const q = 255 * v * (1 - (s * f));
-  const t = 255 * v * (1 - (s * (1 - f)));
-  v *= 255;
-
-  switch (hi) {
-    case 0:
-      return [v, t, p];
-    case 1:
-      return [q, v, p];
-    case 2:
-      return [p, v, t];
-    case 3:
-      return [p, q, v];
-    case 4:
-      return [t, p, v];
-    case 5:
-      return [v, p, q];
-  }
-  // this better be unreachable
-  return [0, 0, 0];
-}
-
 export const __test__ = {
   ProtobufParseError,
-  buildStandbyLEDColorMessage,
   fanOnState,
   fanRotationSpeed,
   flushFunQueue,
@@ -3777,23 +3873,17 @@ export const __test__ = {
       value,
     );
   },
-  async invokeSetBothLightsOnState(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
-    return BigAssFans_i6PlatformAccessory.prototype.setBothLightsOnState.call(
-      pA as BigAssFans_i6PlatformAccessory,
-      value,
-    );
-  },
-  async invokeSetBothBrightness(pA: Partial<BigAssFans_i6PlatformAccessory>, value: CharacteristicValue) {
-    return BigAssFans_i6PlatformAccessory.prototype.setBothBrightness.call(
-      pA as BigAssFans_i6PlatformAccessory,
-      value,
-    );
-  },
   networkSetup,
+  lightBrightness,
+  lightOnState,
+  lightColorTemperature,
+  setTargetBulb,
+  finishLightReport,
+  makeCoordinatedLights,
   normalizeLightDetectionOverride,
   makeServices,
+  sendLightStateRefreshRequest,
   onData,
-  syncBothlightsService,
   percentToRotationSpeed,
   reconcileCapabilities,
   rotationSpeedPercent,
@@ -3806,3 +3896,4 @@ export const __test__ = {
     connectSocket = net.connect;
   },
 };
+

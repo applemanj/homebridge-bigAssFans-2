@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.repository == 'applemanj/homebridge-bigAssFans-2'
     runs-on: ubuntu-latest
 
     steps:
@@ -66,3 +67,4 @@ jobs:
       - name: Skip publish for existing version
         if: steps.npm.outputs.published == 'true'
         run: echo "Version ${{ steps.package.outputs.version }} is already published. Skipping npm publish."
+

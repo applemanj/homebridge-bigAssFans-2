@@ -17,6 +17,14 @@ const elements = {
 
 const state = {
   configs: [],
+  configLoaded: false,
+  configValid: false,
+  configSync: Promise.resolve(),
+  syncRevision: 0,
+  syncedRevision: 0,
+  stagedSignature: "",
+  syncedSignature: "",
+  saving: false,
   config: {
     platform: PLATFORM_ALIAS,
     name: DEFAULT_PLATFORM_NAME,
@@ -29,6 +37,8 @@ const state = {
 };
 
 const fanDefaults = {
+  dualLightModeControl: "exclusive",
+  showWhooshSwitch: false,
   showFanAutoSwitch: false,
   showLightAutoSwitch: false,
   showDimToWarmSwitch: false,
@@ -43,13 +53,17 @@ const fanDefaults = {
   showFanOccupancySensor: false,
   showLightOccupancySensor: false,
   showStandbyLED: false,
-  bothlightsControl: false,
   enableIncrementalButtons: false,
   incrementalButtonsDelay: 500,
   enableDebugPort: false,
 };
 
 const booleanFields = [
+  {
+    key: "showWhooshSwitch",
+    label: "Whoosh switch",
+    help: "Adds a named Whoosh switch alongside the fan tile's Swing control.",
+  },
   {
     key: "showFanAutoSwitch",
     label: "Fan Auto switch (legacy)",
@@ -106,11 +120,6 @@ const booleanFields = [
     help: "Exposes night light / standby LED controls when supported.",
   },
   {
-    key: "bothlightsControl",
-    label: "Both lights control",
-    help: "Adds a single light that turns the downlight and uplight on together at the same brightness.",
-  },
-  {
     key: "enableIncrementalButtons",
     label: "Enable +/- buttons",
     help: "Adds momentary +/- buttons for brightness and fan speed.",
@@ -133,7 +142,6 @@ const lightServiceFields = new Set([
   "showLightAutoSwitch",
   "showDimToWarmSwitch",
   "showStandbyLED",
-  "bothlightsControl",
 ]);
 
 const knownFanFields = [
@@ -142,6 +150,7 @@ const knownFanFields = [
   "mac",
   "probeFrequency",
   "incrementalButtonsDelay",
+  "dualLightModeControl",
   "downlightEquipped",
   "uplightEquipped",
   ...booleanFields.map((field) => field.key),
@@ -198,6 +207,7 @@ async function loadConfig() {
   );
 
   state.config = normalizeConfig(existingConfig);
+  state.configLoaded = true;
   render();
 }
 
@@ -240,9 +250,8 @@ function createFanCard(fan, index) {
   title.textContent = fan.name || `Fan ${index + 1}`;
 
   const status = document.createElement("span");
-  const valid = getFanErrors(fan).length === 0;
-  status.className = `pill ${valid ? "good" : "warn"}`;
-  status.textContent = valid ? "Ready" : "Needs details";
+  status.className = "pill warn";
+  status.textContent = "Not tested";
 
   header.append(title, status);
   card.appendChild(header);
@@ -251,11 +260,34 @@ function createFanCard(fan, index) {
   identityGrid.className = "settings-grid";
   identityGrid.append(
     createTextField(index, "name", "Fan name", fan.name || "", "Office Fan", "Display name for this fan in HomeKit."),
-    createTextField(index, "ip", "Fan IP address or hostname", fan.ip || "", "192.168.1.150 or fan.local", "IP address, DNS hostname, or mDNS .local hostname. Leave blank to auto-discover via mDNS using the MAC address."),
-    createTextField(index, "mac", "MAC address", fan.mac || "", "20:F8:5E:00:00:00", "MAC address from the Big Ass Fans app Wi-Fi settings."),
-    createNumberField(index, "probeFrequency", "Probe frequency (ms)", getValue(fan, "probeFrequency"), "Keep-alive and state refresh interval. Use 0 to disable probing.")
+    createTextField(index, "ip", "Fan IP address or hostname", fan.ip || "", "192.168.1.150 or fan.local", "Optional with a MAC address: leave blank to discover via mDNS."),
+    createTextField(index, "mac", "MAC address", fan.mac || "", "20:F8:5E:00:00:00", "Optional for testing by IP; filled from the fan when available. Required to save or discover by MAC.")
   );
   card.appendChild(identityGrid);
+
+  const connectionActions = document.createElement("div");
+  connectionActions.className = "actions";
+  const test = document.createElement("button");
+  test.type = "button";
+  test.className = "secondary";
+  test.textContent = "Test Connection";
+  test.addEventListener("click", () => {
+    testConnection(index, test).catch(() => {
+      restoreButton(test, "Test Connection");
+      showToast("error", "Connection test failed.");
+    });
+  });
+  connectionActions.append(test);
+  const connectionHelp = document.createElement("p");
+  connectionHelp.className = "help compact-help";
+  connectionHelp.textContent = "Enter a name and either an IP address or MAC address, then Test Connection to detect capabilities. IP testing can fill the MAC; MAC-only testing discovers the address. Choose options below, then save.";
+  const connectionResult = document.createElement("p");
+  connectionResult.className = "help compact-help connection-result";
+  card.append(connectionActions, connectionHelp, connectionResult);
+
+  card.appendChild(createSettingSection("Fan identity and connection", [
+    createNumberField(index, "probeFrequency", "Probe frequency (ms)", getValue(fan, "probeFrequency"), "Keep-alive and state refresh interval. Use 0 to disable probing.")
+  ]));
 
   const tuckedCapabilityFields = [];
   const lightsHidden = getValue(fan, "noLights") === true;
@@ -271,7 +303,9 @@ function createFanCard(fan, index) {
     tuckedCapabilityFields.push(incrementalButtonDelay);
   }
 
+  const modeControl = createModeSelect(index, getValue(fan, "dualLightModeControl"));
   const visibleCapabilityFields = [
+    ...(lightsHidden ? [] : [modeControl]),
     ...(lightsHidden ? [] : [downlightDetection, uplightDetection]),
     ...(incrementalButtonsEnabled ? [incrementalButtonDelay] : []),
   ];
@@ -333,22 +367,12 @@ function createFanCard(fan, index) {
 
   const actions = document.createElement("div");
   actions.className = "actions";
-  const test = document.createElement("button");
-  test.type = "button";
-  test.className = "secondary";
-  test.textContent = "Test Connection";
-  test.addEventListener("click", () => {
-    testConnection(index, test).catch(() => {
-      showToast("error", "Connection test failed.");
-    });
-  });
-
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "danger";
   remove.textContent = "Remove Fan";
   remove.addEventListener("click", () => removeFan(index));
-  actions.append(test, remove);
+  actions.append(remove);
   card.appendChild(actions);
 
   card.addEventListener("input", () => {
@@ -366,6 +390,7 @@ function createFanCard(fan, index) {
     renderDiagnostics();
   });
 
+  refreshFanCardStatus(card);
   return card;
 }
 
@@ -424,6 +449,28 @@ function createNumberField(index, key, label, value, help) {
   input.value = String(value);
   wrapper.appendChild(input);
   wrapper.appendChild(createSmall(help));
+  return wrapper;
+}
+
+function createModeSelect(index, value) {
+  const wrapper = document.createElement("label");
+  wrapper.className = "field";
+  wrapper.appendChild(createSpan("Dual-light mode controls"));
+  const select = document.createElement("select");
+  select.dataset.fanField = "dualLightModeControl";
+  select.dataset.fanIndex = String(index);
+  [
+    ["exclusive", "Down / Up / Both — one selected"],
+    ["channels", "Down + Up — combine switches"],
+    ["both-up", "Both / Up — single switch"],
+  ].forEach(([key, label]) => {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = label;
+    select.appendChild(option);
+  });
+  select.value = ["exclusive", "channels", "both-up"].includes(value) ? value : "exclusive";
+  wrapper.append(select, createSmall("Used only when both lights are present. Mode switches stay selected while the light is off and do not turn it on. In Down + Up, turning off the last selected switch selects the other. Both / Up: on = both, off = up. Both restores Down's brightness."));
   return wrapper;
 }
 
@@ -547,9 +594,18 @@ function refreshFanCardStatus(card) {
     title.textContent = fan.name || `Fan ${index + 1}`;
   }
   if (pill) {
-    const valid = getFanErrors(fan).length === 0;
-    pill.className = `pill ${valid ? "good" : "warn"}`;
-    pill.textContent = valid ? "Ready" : "Needs details";
+    const live = state.diagnostics.devices[index]?.result;
+    pill.className = `pill ${live?.ok ? "good" : "warn"}`;
+    pill.textContent = live ? (live.capabilities ? "Features detected" : live.ok ? "Connected" : "Check connection") : "Not tested";
+    const details = card.querySelector(".connection-result");
+    if (details) {
+      const macMismatch = live?.mac && fan.mac && live.mac.toLowerCase() !== fan.mac.toLowerCase();
+      details.textContent = live
+        ? `${live.message || "Fan responded."} ${live.capabilities ? describeLiveCapabilities(live) + ". " : ""}${macMismatch
+          ? "The reported MAC differs from the configured MAC. The existing MAC has been kept; check the IP and MAC before saving."
+          : !fan.mac ? "MAC address was not reported. Enter it below before saving." : ""}`
+        : "";
+    }
   }
 }
 
@@ -603,6 +659,8 @@ function updateConfigFromForm(validate) {
     setNumberOption(fan, card, "incrementalButtonsDelay");
     setLightOption(fan, card, "downlightEquipped");
     setLightOption(fan, card, "uplightEquipped");
+    const lightModeControl = getFieldValue(card, "dualLightModeControl") || state.config.fans[index]?.dualLightModeControl || "exclusive";
+    fan.dualLightModeControl = ["exclusive", "channels", "both-up"].includes(lightModeControl) ? lightModeControl : "exclusive";
 
     booleanFields.forEach((field) => {
       const checked = getCheckboxValue(card, field.key);
@@ -680,6 +738,10 @@ function setBooleanOption(fan, key, value) {
 }
 
 async function saveSettings() {
+  if (!state.configLoaded || state.saving) {
+    return;
+  }
+
   const errors = updateConfigFromForm(true);
   if (errors.length > 0) {
     showToast("error", `Fix config first: ${errors[0]}.`);
@@ -696,19 +758,90 @@ async function saveSettings() {
     return;
   }
 
-  const configs = await window.homebridge.getPluginConfig();
-  const index = configs.findIndex((entry) => entry.platform === PLATFORM_ALIAS);
-  if (index >= 0) {
-    configs[index] = state.config;
-  } else {
-    configs.push(state.config);
+  state.saving = true;
+  refreshSaveButtons();
+  try {
+    stageConfig();
+    // Edits can arrive while a previous update is waiting for Homebridge.
+    // Wait for the latest queued draft before asking Homebridge to persist it.
+    let pending;
+    do {
+      pending = state.configSync;
+      await pending;
+    } while (pending !== state.configSync);
+
+    const latestErrors = updateConfigFromForm(true);
+    if (latestErrors.length > 0) {
+      showToast("error", `Fix config first: ${latestErrors[0]}.`);
+      updateConfigStatus();
+      return;
+    }
+    await window.homebridge.savePluginConfig();
+    showToast("success", "Settings saved.");
+    render();
+  } finally {
+    state.saving = false;
+    refreshSaveButtons();
+  }
+}
+
+function refreshSaveButtons() {
+  elements.saveSettingsTop.disabled = !state.configLoaded || state.saving;
+  const canSave = state.configLoaded && state.configValid && !state.saving &&
+    state.syncedRevision === state.syncRevision && JSON.stringify(state.config) === state.syncedSignature;
+  const method = canSave ? "enableSaveButton" : "disableSaveButton";
+  if (typeof window.homebridge?.[method] === "function") {
+    window.homebridge[method]();
+  }
+}
+
+function stageConfig() {
+  if (!state.configLoaded || typeof window.homebridge?.updatePluginConfig !== "function") {
+    refreshSaveButtons();
+    return;
   }
 
-  await window.homebridge.updatePluginConfig(configs);
-  await window.homebridge.savePluginConfig();
-  state.configs = configs;
-  showToast("success", "Settings saved.");
-  render();
+  const signature = JSON.stringify(state.config);
+  if (signature === state.stagedSignature) {
+    refreshSaveButtons();
+    return;
+  }
+  state.stagedSignature = signature;
+  const revision = ++state.syncRevision;
+  refreshSaveButtons();
+
+  // updatePluginConfig updates the parent modal's draft, not config.json.
+  // Both Save buttons must use this draft. Serialize updates so an older
+  // response cannot replace newer edits, and coalesce rapid input events.
+  state.configSync = state.configSync.catch(() => {}).then(async () => {
+    if (revision !== state.syncRevision) {
+      return;
+    }
+    const configs = await window.homebridge.getPluginConfig();
+    if (revision !== state.syncRevision) {
+      return;
+    }
+    const index = configs.findIndex((entry) => entry.platform === PLATFORM_ALIAS);
+    const snapshot = JSON.parse(signature);
+    if (index >= 0) {
+      configs[index] = snapshot;
+    } else {
+      configs.push(snapshot);
+    }
+    await window.homebridge.updatePluginConfig(configs);
+    state.configs = configs;
+    state.syncedSignature = signature;
+    state.syncedRevision = revision;
+    refreshSaveButtons();
+  });
+  state.configSync.catch((error) => {
+    if (revision === state.syncRevision) {
+      state.stagedSignature = "";
+      state.syncedSignature = "";
+      refreshSaveButtons();
+      showToast("error", `Could not update settings: ${error.message || "Request failed"}. Use Save Settings to retry.`);
+    }
+  });
 }
 
 async function testConnection(index, button) {
@@ -718,24 +851,37 @@ async function testConnection(index, button) {
     showToast("error", "Fan not found.");
     return;
   }
+  if (!fan.name || (!fan.ip && !isValidMac(fan.mac))) {
+    showToast("warning", "Enter a fan name and either an IP address or valid MAC address before testing.");
+    return;
+  }
 
+  const card = button.closest(".fan-card");
   setButtonBusy(button, "Testing...");
   const result = await request("/fan/test-connection", { fan });
   restoreButton(button, "Test Connection");
+
+  updateConfigFromForm(false);
+  if (elements.fansList.querySelector(`[data-fan-index="${index}"]`) !== card || state.config.fans[index]?.ip !== fan.ip || state.config.fans[index]?.mac !== fan.mac) {
+    return; // The fan was removed, replaced, or its address changed during the test.
+  }
 
   if (!result.ok) {
     showToast("error", result.message || "Connection test failed.");
     return;
   }
 
+  const currentFan = state.config.fans[index];
+  if (!currentFan.mac && isValidMac(result.result?.mac)) {
+    currentFan.mac = result.result.mac;
+  }
   state.diagnostics.devices[index] = {
     index,
-    fan,
+    fan: { ...currentFan },
     result: result.result,
   };
   state.diagnostics.generatedAt = result.result?.checkedAt;
-  renderDiagnostics();
-  refreshFanCardStatusForIndex(index);
+  render();
 
   if (result.result?.ok) {
     showToast("success", `${fan.name || "Fan"} responded.`);
@@ -789,6 +935,8 @@ function restoreButton(button, text) {
 function updateConfigStatus() {
   const errors = updateConfigFromForm(false);
   const fanCount = state.config.fans.length;
+  state.configValid = fanCount > 0 && errors.length === 0;
+  stageConfig();
   elements.configStatus.classList.remove("good", "warn");
 
   if (fanCount === 0) {
@@ -860,7 +1008,7 @@ function createDiagnosticCard(fan, index) {
     ["Detected Capabilities", describeLiveCapabilities(live)],
     ["Capability Exposure", describeLiveExposure(live)],
     ["Capability Guidance", describeLiveGuidance(live)],
-    ["Address", fan.ip || "missing"],
+    ["Address", fan.ip || live?.resolvedIp || "mDNS discovery"],
     ["MAC", fan.mac || "missing"],
     ["State Refresh", `${getValue(fan, "probeFrequency")} ms`],
     ["Lights", describeLights(fan)],
@@ -962,6 +1110,9 @@ function describeLiveCapabilities(live) {
 }
 
 function describeLiveExposure(live) {
+  if (live?.settingsChanged) {
+    return "Options changed since the test. Test again to refresh this comparison.";
+  }
   if (!live?.capabilitySummary) {
     return "not checked yet";
   }
@@ -981,6 +1132,9 @@ function describeLiveExposure(live) {
 }
 
 function describeLiveGuidance(live) {
+  if (live?.settingsChanged) {
+    return "Detected features are retained. Test again if you want updated suggestions for your selected options.";
+  }
   if (Array.isArray(live?.suggestionsApplied) && live.suggestionsApplied.length > 0) {
     return `Applied suggested settings: ${live.suggestionsApplied.join(", ")}. Save settings and restart the child bridge to remove HomeKit services.`;
   }
@@ -1053,8 +1207,12 @@ function highlightSuggestedFields(index, suggestions) {
 }
 
 function clearLiveDiagnostic(index) {
-  if (state.diagnostics.devices[index]) {
+  const diagnostic = state.diagnostics.devices[index];
+  if (diagnostic && (diagnostic.fan.ip !== state.config.fans[index]?.ip || diagnostic.fan.mac !== state.config.fans[index]?.mac)) {
     state.diagnostics.devices[index] = undefined;
+  } else if (diagnostic?.result) {
+    diagnostic.result.settingsChanged = true;
+    diagnostic.result.capabilitySuggestions = [];
   }
 }
 
@@ -1079,6 +1237,7 @@ function formatTimestamp(value) {
 }
 
 function init() {
+  refreshSaveButtons();
   loadConfig().catch(() => {
     showToast("error", "Failed to load current config.");
     render();
@@ -1109,3 +1268,4 @@ if (window.homebridge) {
 } else {
   document.addEventListener("DOMContentLoaded", init);
 }
+
