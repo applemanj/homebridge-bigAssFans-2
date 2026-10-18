@@ -48,8 +48,12 @@ class FakeService {
   public values = new Map<string, unknown>();
   public characteristics = new Set<string>();
   public setters = new Map<string, (value: unknown) => unknown>();
+  public events: Array<{ characteristic: string; value: unknown; forced: boolean }> = [];
 
   updateCharacteristic(characteristic: string, value: unknown) {
+    if (this.values.get(characteristic) !== value) {
+      this.events.push({ characteristic, value, forced: false });
+    }
     this.values.set(characteristic, value);
     return this;
   }
@@ -82,8 +86,9 @@ class FakeService {
   getCharacteristic(characteristic: string) {
     const service = this;
     return {
-      sendEventNotification(value: number) {
-        service.updateCharacteristic(characteristic, value);
+      sendEventNotification(value: unknown) {
+        service.values.set(characteristic, value);
+        service.events.push({ characteristic, value, forced: true });
         return this;
       },
       setProps() { return this; },
@@ -1070,6 +1075,80 @@ async function testBothUpSingleSwitchLayout() {
   }
 }
 
+async function testLightModeNotificationsAfterWriteAck() {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    for (const power of [0, 1] as const) {
+      for (const selected of [1, 2] as const) {
+        const { state, accessory } = createDualLightTestState();
+        state.dualLightModeControl = 'channels';
+        __test__.makeServices(state);
+        __test__.onData(state, reportFrame([[82, selected], [68, power], [69, 25]]));
+        const tapped = accessory.getServiceById('Switch', `white-mode-${selected}`)!;
+        const other = accessory.getServiceById('Switch', `white-mode-${selected === 1 ? 2 : 1}`)!;
+        const write = Promise.resolve(tapped.setters.get('On')!(false)).then(() => {
+          // HAP stores the requested value after the async handler returns.
+          tapped.updateCharacteristic('On', false);
+        });
+        state.whiteLight!.flush();
+        await write;
+        assert.equal(state.whiteLight!.state.power, power, 'Changing mode must not change light power');
+        assert.equal(other.values.get('On'), true);
+        tapped.events.length = 0;
+        other.events.length = 0;
+        mock.timers.tick(150);
+        assert.ok(other.events.some(e => e.characteristic === 'On' && e.value === true),
+          'Notify the newly selected switch after the write acknowledgment, even if its cached value is already true');
+        assert.ok(tapped.events.some(e => e.characteristic === 'On' && e.value === false));
+
+        // A BAF change between notifications must win over the earlier tap.
+        __test__.onData(state, reportFrame([[82, selected], [68, power], [69, 25]]));
+        const socket = state.client as unknown as FakeSocket;
+        const writes = socket.writes.length;
+        tapped.events.length = 0;
+        other.events.length = 0;
+        mock.timers.tick(600);
+        assert.equal(tapped.events.at(-1)?.value, true, 'Repeat reads current state instead of replaying old selection');
+        assert.equal(other.events.at(-1)?.value, false);
+        assert.equal(socket.writes.length, writes, 'Notifications must not send mode commands to the fan');
+        tapped.events.length = 0;
+        other.events.length = 0;
+        mock.timers.tick(1000);
+        assert.equal(tapped.events.length + other.events.length, 0, 'Only one bounded repeat');
+        state.whiteLight!.disconnect();
+        state.nightLight?.disconnect();
+      }
+    }
+    // Home may send Off to both grouped switches in the same request.
+    const { state, accessory } = createDualLightTestState();
+    state.dualLightModeControl = 'channels';
+    __test__.makeServices(state);
+    __test__.onData(state, reportFrame([[82, 0], [68, 0], [69, 25]]));
+    const down = accessory.getServiceById('Switch', 'white-mode-1')!;
+    const up = accessory.getServiceById('Switch', 'white-mode-2')!;
+    const writes = [down, up].map(service => Promise.resolve(service.setters.get('On')!(false))
+      .then(() => service.updateCharacteristic('On', false)));
+    state.whiteLight!.flush();
+    await Promise.all(writes);
+    mock.timers.tick(150);
+    assert.notEqual(down.values.get('On'), up.values.get('On'), 'A grouped Off request leaves exactly one mode selected');
+    assert.equal(state.whiteLight!.view.power, 0);
+
+    // A new tap cancels the previous repeat; disconnect suppresses new events.
+    const next = down.setters.get('On')!(true);
+    state.whiteLight!.flush();
+    await next;
+    state.whiteLight!.disconnect();
+    down.events.length = 0;
+    up.events.length = 0;
+    mock.timers.tick(1000);
+    assert.equal(down.events.length + up.events.length, 0);
+    state.nightLight?.disconnect();
+  } finally {
+    mock.timers.reset();
+  }
+}
+
 async function testExternalLightReportWinsDuringHomeKitWrite() {
   const { state, accessory } = createDualLightTestState();
   __test__.makeServices(state);
@@ -1402,6 +1481,7 @@ async function main() {
     state.nightLight?.disconnect();
   }
   await testBothUpSingleSwitchLayout();
+  await testLightModeNotificationsAfterWriteAck();
   testMacDiscoveryReadsOnlyFanIdentity();
   await testNightLightControlsPreserveEnableAndIntensity();
   await testNightLightInitialEnableAndZeroIntensityScene();

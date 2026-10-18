@@ -106,3 +106,12 @@ requested values until those properties are actually reported, or the existing
 values still take effect immediately, including changes from the BAF app; the
 plugin does not retry writes to fight them. Mode and brightness feedback can
 arrive in either order without discarding a freshly reported brightness.
+
+### Mode-switch display updates
+
+After a mode-switch write completes, the plugin explicitly notifies HomeKit of
+all mode switches after 100 ms, with one repeat 500 ms later. This lets Home show
+the automatically selected companion switch even if it missed the update while
+processing the original tap. Notifications use the current selection, including
+any intervening BAF app report, and do not resend commands to the fan. New mode
+writes replace pending notifications; disconnect and shutdown cancel them.

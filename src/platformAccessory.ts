@@ -189,6 +189,8 @@ export class BigAssFans_i6PlatformAccessory {
   public rememberedFanSpeed?: number;
   public displayedFanPercent?: number;
   public displayedFanSpeed?: number;
+  public lightModeNotifyTimer?: ReturnType<typeof setTimeout>;
+  public lightModeRepeatTimer?: ReturnType<typeof setTimeout>;
   public fanDisplayTimer?: ReturnType<typeof setTimeout>;
   public fanDisplayRepeatTimer?: ReturnType<typeof setTimeout>;
   public fanRefreshTimer?: ReturnType<typeof setTimeout>;
@@ -221,6 +223,7 @@ export class BigAssFans_i6PlatformAccessory {
     this.Name = device.name;
     this.dualLightModeControl = normalizeDualLightModeControl(device.dualLightModeControl);
     this.platform.api.on('shutdown', () => {
+      clearLightModeNotifications(this);
       this.whiteLight?.disconnect();
       this.nightLight?.disconnect();
     });
@@ -1085,6 +1088,46 @@ async function writeWhiteLight(pA: BAF, action: (light: DualLightCoordinator) =>
   }
 }
 
+function clearLightModeNotifications(pA: BAF) {
+  clearTimeout(pA.lightModeNotifyTimer);
+  clearTimeout(pA.lightModeRepeatTimer);
+  pA.lightModeNotifyTimer = undefined;
+  pA.lightModeRepeatTimer = undefined;
+}
+
+async function writeLightMode(pA: BAF, action: (light: DualLightCoordinator) => Promise<void>) {
+  clearLightModeNotifications(pA);
+  await writeWhiteLight(pA, action);
+  clearLightModeNotifications(pA);
+  const light = pA.whiteLight;
+  const notify = () => {
+    if (!light?.ready || pA.whiteLight !== light || !pA.client?.writable || pA.client.destroyed) {
+      return false;
+    }
+    // HAP has already cached the companion switch's new value during the write.
+    // Ordinary updates can then be suppressed while Home retains its tapped
+    // state. Send the current whole mode after the write acknowledgment.
+    for (const [mode, service] of pA.lightModeServices) {
+      service.getCharacteristic(pA.platform.Characteristic.On).sendEventNotification(
+        pA.dualLightModeControl === 'channels' ? light.channelOn(mode as 1 | 2) : light.view.selection === mode,
+      );
+    }
+    return true;
+  };
+  pA.lightModeNotifyTimer = setTimeout(() => {
+    pA.lightModeNotifyTimer = undefined;
+    if (notify()) {
+      // One bounded repeat for Home's expanded controls; always read live state.
+      pA.lightModeRepeatTimer = setTimeout(() => {
+        pA.lightModeRepeatTimer = undefined;
+        notify();
+      }, 500);
+      pA.lightModeRepeatTimer.unref?.();
+    }
+  }, 100);
+  pA.lightModeNotifyTimer.unref?.();
+}
+
 function syncCoordinatedLights(pA: BAF) {
   const light = pA.whiteLight;
   if (!light || !pA.whiteLightService) {
@@ -1181,7 +1224,7 @@ function makeCoordinatedLights(pA: BAF) {
         const light = requireWhiteLight(pA);
         return pA.dualLightModeControl === 'channels' ? light.channelOn(mode as 1 | 2) : light.view.selection === mode;
       })
-      .onSet(value => writeWhiteLight(pA, light => {
+      .onSet(value => writeLightMode(pA, light => {
         if (pA.dualLightModeControl === 'both-up') {
           return light.select(value ? 0 : 2, true);
         }
@@ -1354,6 +1397,7 @@ function makeServices(pA: BAF) {
   if (coordinated) {
     makeCoordinatedLights(pA);
   } else {
+    clearLightModeNotifications(pA);
     pA.whiteLight?.disconnect();
     pA.whiteLight = undefined;
     pA.whiteLightService = undefined;
@@ -1694,6 +1738,7 @@ function networkSetup(pA: BAF) {
       pA.client.destroy();
     }
     pA.client = undefined;
+    clearLightModeNotifications(pA);
     pA.whiteLight?.disconnect();
     pA.nightLight?.disconnect();
     clearRotationSpeedDiagnostics(pA);
