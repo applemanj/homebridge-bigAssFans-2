@@ -1678,7 +1678,33 @@ async function main() {
   await testDisableDirectionControl();
   assert.equal(normalizeDualLightModeControl('both-only'), 'both-only');
   assert.equal(normalizeDualLightModeControl('legacy'), 'exclusive');
-  assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');
+  assert.equal(normalizeDualLightModeControl(undefined), 'separate-dimmers');
+  for (const legacy of [true, false, undefined]) {
+    const { state, accessory } = createDualLightTestState();
+    state.dualLightModeControl = normalizeDualLightModeControl(undefined, legacy);
+    __test__.makeServices(state);
+    const down = accessory.getServiceById('Lightbulb', 'light-1');
+    const up = accessory.getServiceById('Lightbulb', 'light-2');
+    assert.ok(down);
+    assert.ok(up);
+    assert.equal(Boolean(state.bothlightsBulbService), legacy === true);
+    assert.equal(Boolean(state.whiteLight), false);
+    assert.equal(state.lightModeServices.size, 0);
+    __test__.makeServices(state);
+    assert.equal(accessory.getServiceById('Lightbulb', 'light-1'), down);
+    assert.equal(accessory.getServiceById('Lightbulb', 'light-2'), up);
+
+    // Choosing the coordinated default must replace legacy dimmers even if the old flag remains.
+    state.dualLightModeControl = normalizeDualLightModeControl('exclusive', legacy);
+    __test__.makeServices(state);
+    assert.ok(state.whiteLight);
+    assert.equal(state.lightModeServices.size, 3);
+    assert.equal(accessory.getServiceById('Lightbulb', 'light-1'), undefined);
+    assert.equal(accessory.getServiceById('Lightbulb', 'light-2'), undefined);
+    assert.equal(state.bothlightsBulbService, undefined);
+    state.whiteLight?.disconnect();
+    state.nightLight?.disconnect();
+  }
   for (const mode of ['exclusive', 'channels', 'both-up', 'both-only', 'separate-dimmers', 'separate-dimmers-both', 'legacy']) {
     for (const uplight of [false, true]) {
       const { state, accessory } = createDualLightTestState();

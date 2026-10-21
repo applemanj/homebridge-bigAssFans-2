@@ -372,6 +372,52 @@ test("legacy dual-light settings migrate to exclusive with only supported layout
   assert.equal(page.host.saved[0].fans[0].mac, existingFan.mac);
 });
 
+for (const legacy of [true, false, undefined]) {
+  test(`legacy bothlightsControl=${legacy} keeps its layout through an unrelated edit and reopening`, async () => {
+    const old = clone(config);
+    if (legacy !== undefined) { old.fans[0].bothlightsControl = legacy; }
+    const expected = legacy === true ? "separate-dimmers-both" : "separate-dimmers";
+    const page = await openPage([old]);
+    assert.equal(page.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]').value, expected);
+    assert.equal(page.host.saves, 0, "Opening settings must not save to disk");
+    page.edit(0, "name", "Renamed fan");
+    await page.settle();
+    await page.hostSave();
+    const saved = page.host.saved[0].fans[0];
+    assert.equal(saved.dualLightModeControl, expected);
+    assert.equal(saved.bothlightsControl, legacy);
+    assert.equal(saved.customOption, "keep");
+    const reopened = await openPage(page.host.saved);
+    assert.equal(reopened.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]').value, expected);
+  });
+}
+
+for (const legacy of [true, false]) {
+  test(`explicit exclusive replaces legacy bothlightsControl=${legacy} and survives reopening`, async () => {
+    const old = clone(config);
+    old.fans[0].bothlightsControl = legacy;
+    const page = await openPage([old]);
+    page.edit(0, "dualLightModeControl", "exclusive");
+    await page.settle();
+    await page.hostSave();
+    assert.equal(page.host.saved[0].fans[0].dualLightModeControl, "exclusive");
+    const reopened = await openPage(page.host.saved);
+    assert.equal(reopened.cards()[0].querySelector('[data-fan-field="dualLightModeControl"]').value, "exclusive");
+  });
+}
+
+test("adding a fan explicitly saves exclusive without changing the existing legacy fan", async () => {
+  const page = await openPage();
+  const index = page.add();
+  assert.equal(page.cards()[index].querySelector('[data-fan-field="dualLightModeControl"]').value, "exclusive");
+  await page.settle();
+  await page.hostSave();
+  assert.equal(page.host.saved[0].fans[0].dualLightModeControl, "separate-dimmers");
+  assert.equal(page.host.saved[0].fans[index].dualLightModeControl, "exclusive");
+  const reopened = await openPage(page.host.saved);
+  assert.equal(reopened.cards()[index].querySelector('[data-fan-field="dualLightModeControl"]').value, "exclusive");
+});
+
 test("MAC-only setup can test and save while retaining automatic discovery", async () => {
   const page = await openPage([]);
   page.add();

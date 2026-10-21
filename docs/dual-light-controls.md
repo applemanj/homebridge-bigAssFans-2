@@ -1,6 +1,6 @@
 # Dual-light controls
 
-By default, fans that report both a downlight and an uplight get one **White Light** tile with power, brightness and (when supported) color temperature. Two additional layouts expose separate dimmers using upstream v1.2.0 light behavior for comparison.
+Fans added through the settings UI default to one **White Light** tile with power, brightness and (when supported) color temperature when both a downlight and an uplight are detected. Existing configurations retain their selected or legacy layout as described below. Two additional layouts expose separate dimmers using upstream v1.2.0 light behavior for comparison.
 
 When adding a fan, enter its name and either its IP address/hostname or MAC address, then use **Test Connection** directly below those fields. The test reads supported features and fills an empty MAC address field from the fan's identity report. Select your options and save. If the fan does not report its MAC, enter it from the BAF app's Wi-Fi settings before saving. Existing MAC addresses are preserved because they identify paired HomeKit accessories; a mismatch is shown for review. Testing does not save the configuration.
 
@@ -17,7 +17,7 @@ Choose **Dual-light mode controls** in the plugin settings:
 
 Both-only does not force a mode on startup or in response to BAF app/remote changes. External state is still displayed accurately; the next HomeKit white-light command selects Both again. Changing temperature while off keeps the light off, and zero brightness retains the usual Off/restore behavior.
 
-The old `legacy` option remains retired; it is not an alias for either explicit upstream comparison layout. Existing `legacy` configurations use Down / Up / Both instead, and the settings UI saves the replacement value. Single-light fans keep their existing dimmer and accessory identity. For dual-light fans migrating from legacy controls, HomeKit scenes referencing the replaced dimmers may need updating.
+The old `legacy` option remains retired; it is not an alias for either explicit upstream comparison layout. Without a `bothlightsControl` flag, existing `legacy` configurations use Down / Up / Both instead, and the settings UI saves the replacement value. Single-light fans keep their existing dimmer and accessory identity. For dual-light fans migrating from legacy controls, HomeKit scenes referencing the replaced dimmers may need updating.
 
 ## Upstream dimmer comparison layouts
 
@@ -82,10 +82,18 @@ Example additional fields in an existing fan entry:
 ### v1.2.0 compatibility (`bothlightsControl`)
 
 The deprecated `bothlightsControl` option is still honored. An explicit
-`dualLightModeControl` always wins. Otherwise `bothlightsControl: true` maps to
-`separate-dimmers-both` (Down/Up/Both tiles) and `false` or unset maps to
-`separate-dimmers` (Down/Up tiles) — exactly the v1.2.0 layouts. Fresh configs
-without either field get the new `exclusive` default.
+supported `dualLightModeControl`, including `exclusive`, always wins, even when
+the old flag is still present. Otherwise `bothlightsControl: true` maps to
+`separate-dimmers-both` (Down/Up/Both tiles) and `false` maps to
+`separate-dimmers` (Down/Up tiles). When both fields are omitted, the old
+two-dimmer layout is retained too.
+
+The settings UI displays the resolved layout and saves it explicitly, so an
+unrelated edit does not change an existing fan's layout. **Add Fan** explicitly
+sets `dualLightModeControl: "exclusive"` for new fans. A new handwritten config
+must also set this field to get the coordinated default: a config with neither
+field cannot be distinguished from an old v1.2.0 config. Retired/invalid layout
+values without a legacy flag continue to fall back to `exclusive`.
 
 Single-light and unlit fans retain their existing white-light layout. Hidden lights do not expose night-light controls. Switching layouts removes the replaced services; HomeKit scenes targeting an old light tile may need to be updated.
 

@@ -1,5 +1,11 @@
 ## Release Notes
 
+### Unreleased
+
+- Honor every explicit `dualLightModeControl`, including `exclusive`, when the deprecated `bothlightsControl` flag remains in a configuration.
+- Retain the v1.2.0 two-dimmer layout when both layout fields are omitted. New fans added in the custom UI explicitly save `exclusive`; handwritten configs must set it to choose the coordinated default.
+- Show and preserve the resolved legacy layout in the custom UI, including through unrelated edits, Save, and reopening. Add layout precedence, service migration, and UI regression coverage.
+
 ### v1.3.0
 
 **ES6 Dual-Light Layouts, Night-Light Controls, and HomeKit State Synchronization** (PR #3 by @pponce, plus a backward-compatibility layer)

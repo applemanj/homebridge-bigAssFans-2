@@ -3,19 +3,20 @@ export type LightSelection = 0 | 1 | 2; // Both, Down, Up
 export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up' | 'both-only' | 'separate-dimmers' | 'separate-dimmers-both';
 
 export function normalizeDualLightModeControl(value: unknown, legacyBothlightsControl?: boolean): DualLightModeControl {
-  if (value === 'channels' || value === 'both-up' || value === 'both-only' ||
+  if (value === 'exclusive' || value === 'channels' || value === 'both-up' || value === 'both-only' ||
     value === 'separate-dimmers' || value === 'separate-dimmers-both') {
     return value;
   }
-  // v1.2.0 compatibility: bothlightsControl=true added a Both dimmer alongside
-  // Down/Up (separate-dimmers-both); unset fans kept separate Down/Up dimmers.
+  // Configs without the new field retain the v1.2.0 layout, including an omitted
+  // old flag. New UI-created fans explicitly store 'exclusive'; absence alone
+  // cannot distinguish a new handwritten config from an existing installation.
   if (legacyBothlightsControl === true) {
     return 'separate-dimmers-both';
   }
-  if (legacyBothlightsControl === false) {
+  if (legacyBothlightsControl === false || value === undefined) {
     return 'separate-dimmers';
   }
-  return 'exclusive';
+  return 'exclusive'; // Preserve the fallback for retired/invalid layout values.
 }
 
 export type LightPower = 0 | 1 | 2; // Off, On, Auto
