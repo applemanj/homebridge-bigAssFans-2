@@ -373,9 +373,15 @@ async function main() {
     const { normalizeDualLightModeControl } = await import('../src/lighting');
     assert.equal(normalizeDualLightModeControl(undefined, true), 'separate-dimmers-both');
     assert.equal(normalizeDualLightModeControl(undefined, false), 'separate-dimmers');
-    assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');
-    assert.equal(normalizeDualLightModeControl('channels', true), 'channels', 'Explicit dualLightModeControl wins over legacy option');
+    assert.equal(normalizeDualLightModeControl(undefined), 'separate-dimmers', 'Omitted v1.2.0 fields retain two dimmers');
+    for (const mode of ['exclusive', 'channels', 'both-up', 'both-only', 'separate-dimmers', 'separate-dimmers-both']) {
+      for (const legacy of [true, false, undefined]) {
+        assert.equal(normalizeDualLightModeControl(mode, legacy), mode, 'Every explicit layout wins over the legacy option');
+      }
+    }
     assert.equal(normalizeDualLightModeControl('bogus', true), 'separate-dimmers-both');
+    assert.equal(normalizeDualLightModeControl('bogus', false), 'separate-dimmers');
+    assert.equal(normalizeDualLightModeControl('legacy'), 'exclusive', 'Retain the retired invalid-value fallback');
   }
 
   console.log('Coordinated lighting tests passed.');

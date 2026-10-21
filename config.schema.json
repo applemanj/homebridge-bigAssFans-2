@@ -170,7 +170,7 @@
             },
             "bothlightsControl": {
               "title": "Both Lights Control (deprecated)",
-              "description": "Deprecated v1.2.0 option. true maps to dualLightModeControl=separate-dimmers-both; false or unset maps to separate-dimmers. Set dualLightModeControl instead.",
+              "description": "Deprecated v1.2.0 option. Any supported dualLightModeControl value takes precedence, including exclusive. Otherwise true selects separate-dimmers-both and false selects separate-dimmers. Omitting both fields retains separate-dimmers. New fans added in the custom UI explicitly use exclusive.",
               "type": "boolean",
               "default": false
             },
