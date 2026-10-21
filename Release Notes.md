@@ -1,5 +1,20 @@
 ## Release Notes
 
+### v1.3.0
+
+**ES6 Dual-Light Layouts, Night-Light Controls, and HomeKit State Synchronization** (PR #3 by @pponce, plus a backward-compatibility layer)
+
+- Added `dualLightModeControl` with six layouts: `exclusive` (default; Down/Up/Both mode switches), `channels` (Down+Up switches; deselecting the last selects the other), `both-up` (one switch: On=Both, Off=Up), `both-only` (no mode switches; all commands target Both), `separate-dimmers` (Down/Up tiles), and `separate-dimmers-both` (Down/Up/Both tiles).
+- Added `DualLightCoordinator`: intent batching with ordered protobuf writes (selection→brightness→kelvin→power), per-mode brightness memory, confirmation timeouts with memory rollback, and a partial-report rollback fix.
+- Added `NightLightCoordinator`: standby-LED enable/color/brightness written atomically as one complete `StandbyLed` message — fixes the color-write-disables-light bug. Preset hue/sat table and state↔RGB conversion.
+- Fan speed is now restored before power-on wake (with a 400ms guard), off-echo no longer cancels queued writes, and rotation speed display holds for 1500ms with bounded repeat notifications.
+- Direction control is now correctly READ_ONLY when `disableDirectionControl` is set (previously threw generic errors); the characteristic is omitted from the service.
+- Per-fan async mDNS discovery (known-IP fans start immediately, no batch wait); capability detection with `downlightEquipped`/`uplightEquipped` overrides; separate child light-tile accessories; `/diagnostics/state` UI endpoint; save-sync state machine in the custom UI.
+- **Backward compatibility**: the deprecated v1.2.0 `bothlightsControl` option is still honored — `true` maps to `separate-dimmers-both`, `false`/unset maps to `separate-dimmers`; an explicit `dualLightModeControl` always wins. Fresh configs default to `exclusive`.
+- New test suites: `tests/lighting.ts`, `tests/discovery.ts`, `tests/ui-config.js` (~1,800 lines); `npm run test:regression` now chains all suites. New docs: `docs/dual-light-controls.md`, `docs/fan-speed-controls.md`.
+
+---
+
 ### v1.2.0
 
 **Both Lights Control, mDNS Discovery, and Documentation**
