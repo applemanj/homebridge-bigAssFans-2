@@ -224,7 +224,7 @@ export class BigAssFans_i6PlatformAccessory {
     this.IP = device.ip ?? '';
     this.MAC = device.mac;
     this.Name = device.name;
-    this.dualLightModeControl = normalizeDualLightModeControl(device.dualLightModeControl);
+    this.dualLightModeControl = normalizeDualLightModeControl(device.dualLightModeControl, device.bothlightsControl);
     this.platform.api.on('shutdown', () => {
       clearLightModeNotifications(this);
       this.whiteLight?.disconnect();

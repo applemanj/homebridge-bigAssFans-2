@@ -368,6 +368,16 @@ async function main() {
     mock.timers.reset();
   }
 
+  // v1.2.0 bothlightsControl compatibility mapping.
+  {
+    const { normalizeDualLightModeControl } = await import('../src/lighting');
+    assert.equal(normalizeDualLightModeControl(undefined, true), 'separate-dimmers-both');
+    assert.equal(normalizeDualLightModeControl(undefined, false), 'separate-dimmers');
+    assert.equal(normalizeDualLightModeControl(undefined), 'exclusive');
+    assert.equal(normalizeDualLightModeControl('channels', true), 'channels', 'Explicit dualLightModeControl wins over legacy option');
+    assert.equal(normalizeDualLightModeControl('bogus', true), 'separate-dimmers-both');
+  }
+
   console.log('Coordinated lighting tests passed.');
 }
 void main().catch(error => { console.error(error); process.exitCode = 1; });

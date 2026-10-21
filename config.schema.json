@@ -168,6 +168,12 @@
               ],
               "default": "exclusive"
             },
+            "bothlightsControl": {
+              "title": "Both Lights Control (deprecated)",
+              "description": "Deprecated v1.2.0 option. true maps to dualLightModeControl=separate-dimmers-both; false or unset maps to separate-dimmers. Set dualLightModeControl instead.",
+              "type": "boolean",
+              "default": false
+            },
             "showFanOccupancySensor": {
               "title": "Show Fan Occupancy Sensor",
               "description": "Expose the fan occupancy sensor when supported by the fan.",

@@ -12,6 +12,8 @@ export interface BigAssFansDeviceConfig {
   debugLevels?: DebugLevelConfigEntry[];
   noLights?: boolean;
   dualLightModeControl?: DualLightModeControl;
+  /** @deprecated v1.2.0 option; mapped onto dualLightModeControl for backward compatibility. */
+  bothlightsControl?: boolean;
   downlightEquipped?: LightDetectionOverride;
   uplightEquipped?: LightDetectionOverride;
   whoosh?: boolean;

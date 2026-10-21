@@ -79,6 +79,14 @@ Example additional fields in an existing fan entry:
 }
 ```
 
+### v1.2.0 compatibility (`bothlightsControl`)
+
+The deprecated `bothlightsControl` option is still honored. An explicit
+`dualLightModeControl` always wins. Otherwise `bothlightsControl: true` maps to
+`separate-dimmers-both` (Down/Up/Both tiles) and `false` or unset maps to
+`separate-dimmers` (Down/Up tiles) — exactly the v1.2.0 layouts. Fresh configs
+without either field get the new `exclusive` default.
+
 Single-light and unlit fans retain their existing white-light layout. Hidden lights do not expose night-light controls. Switching layouts removes the replaced services; HomeKit scenes targeting an old light tile may need to be updated.
 
 ## Device validation

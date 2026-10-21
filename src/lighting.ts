@@ -2,10 +2,20 @@
 export type LightSelection = 0 | 1 | 2; // Both, Down, Up
 export type DualLightModeControl = 'exclusive' | 'channels' | 'both-up' | 'both-only' | 'separate-dimmers' | 'separate-dimmers-both';
 
-export function normalizeDualLightModeControl(value: unknown): DualLightModeControl {
-  return value === 'channels' || value === 'both-up' || value === 'both-only' ||
-    value === 'separate-dimmers' || value === 'separate-dimmers-both'
-    ? value : 'exclusive';
+export function normalizeDualLightModeControl(value: unknown, legacyBothlightsControl?: boolean): DualLightModeControl {
+  if (value === 'channels' || value === 'both-up' || value === 'both-only' ||
+    value === 'separate-dimmers' || value === 'separate-dimmers-both') {
+    return value;
+  }
+  // v1.2.0 compatibility: bothlightsControl=true added a Both dimmer alongside
+  // Down/Up (separate-dimmers-both); unset fans kept separate Down/Up dimmers.
+  if (legacyBothlightsControl === true) {
+    return 'separate-dimmers-both';
+  }
+  if (legacyBothlightsControl === false) {
+    return 'separate-dimmers';
+  }
+  return 'exclusive';
 }
 
 export type LightPower = 0 | 1 | 2; // Off, On, Auto
