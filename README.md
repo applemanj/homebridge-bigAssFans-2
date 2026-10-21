@@ -243,7 +243,8 @@ Special thanks to:
 
 - [@bdraco](https://github.com/bdraco) for identifying the protobuf protocol.
 - [@jfroy](https://github.com/jfroy) for building a working BAF protobuf controller.
-- [@pponce](https://github.com/pponce), [@knmorgan](https://github.com/knmorgan), [@aveach](https://github.com/aveach), and the users who reported issues and helped debug.
+- [@pponce](https://github.com/pponce) for the ES6 dual-light layouts, night-light coordinator, and HomeKit state synchronization ([PR #3](https://github.com/applemanj/homebridge-bigAssFans-2/pull/3)).
+- [@knmorgan](https://github.com/knmorgan), [@aveach](https://github.com/aveach), and the users who reported issues and helped debug.
 - [HAP-NodeJS](https://github.com/KhaosT/HAP-NodeJS), [Homebridge](https://github.com/homebridge/homebridge), and [Big Ass Fans](https://www.bigassfans.com).
 
 ## License
