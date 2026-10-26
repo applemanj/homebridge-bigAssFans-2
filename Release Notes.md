@@ -1,6 +1,8 @@
 ## Release Notes
 
-### Unreleased
+### v1.3.1
+
+**Dual-Light Compatibility Defaults and Layout Selection Fixes** (PR #4 by @pponce)
 
 - Honor every explicit `dualLightModeControl`, including `exclusive`, when the deprecated `bothlightsControl` flag remains in a configuration.
 - Retain the v1.2.0 two-dimmer layout when both layout fields are omitted. New fans added in the custom UI explicitly save `exclusive`; handwritten configs must set it to choose the coordinated default.
