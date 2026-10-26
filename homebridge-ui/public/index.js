@@ -559,7 +559,25 @@ function createSmall(text) {
 }
 
 function getValue(fan, key) {
+  if (key === "dualLightModeControl") {
+    return getDualLightModeControl(fan);
+  }
   return fan[key] === undefined ? fanDefaults[key] : fan[key];
+}
+
+// Keep the settings display/save path aligned with src/lighting.ts.
+function getDualLightModeControl(fan) {
+  const value = fan.dualLightModeControl;
+  if (["exclusive", "channels", "both-up", "both-only", "separate-dimmers", "separate-dimmers-both"].includes(value)) {
+    return value;
+  }
+  if (fan.bothlightsControl === true) {
+    return "separate-dimmers-both";
+  }
+  if (fan.bothlightsControl === false || value === undefined) {
+    return "separate-dimmers";
+  }
+  return "exclusive";
 }
 
 function getLightOverride(value) {
@@ -621,6 +639,7 @@ function addFan() {
     name: "",
     ip: "",
     mac: "",
+    dualLightModeControl: fanDefaults.dualLightModeControl,
   });
   render();
   showToast("success", "Fan added.");
@@ -661,8 +680,8 @@ function updateConfigFromForm(validate) {
     setNumberOption(fan, card, "incrementalButtonsDelay");
     setLightOption(fan, card, "downlightEquipped");
     setLightOption(fan, card, "uplightEquipped");
-    const lightModeControl = getFieldValue(card, "dualLightModeControl") || state.config.fans[index]?.dualLightModeControl || "exclusive";
-    fan.dualLightModeControl = ["exclusive", "channels", "both-up", "both-only", "separate-dimmers", "separate-dimmers-both"].includes(lightModeControl) ? lightModeControl : "exclusive";
+    const lightModeControl = getFieldValue(card, "dualLightModeControl") || getDualLightModeControl(state.config.fans[index] || {});
+    fan.dualLightModeControl = getDualLightModeControl({ ...fan, dualLightModeControl: lightModeControl });
 
     booleanFields.forEach((field) => {
       const checked = getCheckboxValue(card, field.key);

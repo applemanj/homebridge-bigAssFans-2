@@ -171,8 +171,8 @@ Common optional choices:
 | `showFanOccupancySensor` | `false` | Exposes fan occupancy when supported by the fan. |
 | `showLightOccupancySensor` | `false` | Exposes light occupancy when supported by the fan. |
 | `showStandbyLED` | `false` | Exposes night light / standby LED controls when supported by the fan. Hidden if `noLights` is enabled. |
-| `dualLightModeControl` | `exclusive` | Dual-light layouts: `exclusive` (Down/Up/Both), `channels` (Down+Up), `both-up` (one Both/Up switch), `both-only` (Both with no mode switches), `separate-dimmers` (Down/Up tiles), or `separate-dimmers-both` (Down/Up/Both tiles). |
-| `bothlightsControl` | `false` | **Deprecated** (v1.2.0). `true` maps to `dualLightModeControl: separate-dimmers-both`; `false`/unset maps to `separate-dimmers`. Set `dualLightModeControl` instead. |
+| `dualLightModeControl` | `exclusive` for newly added fans | Dual-light layouts: `exclusive` (Down/Up/Both), `channels` (Down+Up), `both-up` (one Both/Up switch), `both-only` (Both with no mode switches), `separate-dimmers` (Down/Up tiles), or `separate-dimmers-both` (Down/Up/Both tiles). Every explicit layout overrides `bothlightsControl`. Omitting both fields retains the old two-dimmer layout; the custom UI explicitly sets `exclusive` for new fans. |
+| `bothlightsControl` | `false` | **Deprecated** (v1.2.0). Used when no supported `dualLightModeControl` is selected: `true` maps to `separate-dimmers-both`; `false` maps to `separate-dimmers`. With both fields omitted, the layout is also `separate-dimmers`. Set `dualLightModeControl` instead. |
 | `enableIncrementalButtons` | `false` | Adds momentary +/- buttons for brightness and fan speed. |
 
 ### Advanced Fields
